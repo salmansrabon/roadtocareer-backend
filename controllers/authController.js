@@ -34,10 +34,10 @@ exports.register = async (req, res) => {
 // ✅ Login User
 exports.login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { username, password } = req.body; // ✅ Expect username instead of email
 
-        // ✅ Find user by email
-        const user = await User.findOne({ where: { email } });
+        // ✅ Find user by username
+        const user = await User.findOne({ where: { username } });
         if (!user) {
             return res.status(401).json({ message: "Invalid credentials" });
         }

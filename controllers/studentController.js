@@ -1,8 +1,9 @@
-const bcrypt = require("bcryptjs");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
 const Package = require("../models/Package");
+const User = require("../models/User");
 const axios = require("axios");
+const { Sequelize } = require("sequelize");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -18,7 +19,7 @@ const generateStudentId = async (student_name) => {
 
     while (!isUnique) {
         const randomNum = Math.floor(100 + Math.random() * 900); // 3-digit random number
-        newId = `SDET${namePart}${randomNum}`; // Example: "SDETdoe123"
+        newId = `sdet${namePart}${randomNum}`; // Example: "SDETdoe123"
 
         const existingStudent = await Student.findOne({ where: { StudentId: newId } });
         if (!existingStudent) isUnique = true;
@@ -139,3 +140,196 @@ exports.studentSignup = async (req, res) => {
         res.status(500).json({ message: "Internal server error." });
     }
 };
+exports.getAllStudents = async (req, res) => {
+    try {
+        const students = await Student.findAll({
+            attributes: [
+                "StudentId",
+                "student_name",
+                "email",
+                "mobile",
+                "university",
+                "batch_no",
+                "courseTitle",
+                "package",
+                "profession",
+                "company",
+                "designation",
+                "experience",
+                "knowMe",
+                "createdAt"
+            ],
+            include: [
+                {
+                    model: Course,
+                    attributes: ["courseId", "course_title"]
+                },
+                {
+                    model: User, // ✅ Correctly map users table
+                    attributes: ["isValid"], // ✅ Fetch `isValid` status
+                    required: false, // ✅ LEFT JOIN instead of INNER JOIN
+                    on: { col1: Sequelize.where(Sequelize.col("User.username"), "=", Sequelize.col("Student.StudentId")) }
+                }
+            ],
+            order: [["createdAt", "DESC"]], // Sort by latest enrollment
+        });
+
+        // ✅ Get total student count
+        const totalStudents = await Student.count();
+
+        res.status(200).json({ totalStudents, students });
+    } catch (error) {
+        console.error("Error fetching students:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+exports.getStudentById = async (req, res) => {
+    try {
+        const { studentId } = req.params;
+
+        // ✅ Find Student with Related Data
+        const student = await Student.findOne({
+            where: { StudentId: studentId },
+            attributes: [
+                "StudentId",
+                "student_name",
+                "email",
+                "mobile",
+                "university",
+                "batch_no",
+                "courseTitle",
+                "package",  // ✅ Needed to filter the package
+                "profession",
+                "company",
+                "designation",
+                "experience",
+                "knowMe",
+                "remark",
+                "createdAt"
+            ],
+            include: [
+                {
+                    model: Course,
+                    attributes: ["courseId", "course_title"]
+                },
+                {
+                    model: User, // ✅ Join with users table
+                    attributes: ["isValid"],
+                    required: false, // LEFT JOIN (so that it doesn't fail if no user exists)
+                    on: { col1: Sequelize.where(Sequelize.col("User.username"), "=", Sequelize.col("Student.StudentId")) }
+                },
+                {
+                    model: Package,
+                    attributes: ["courseId", "packageName", "studentFee", "jobholderFee", "installment"],
+                    required: false, // LEFT JOIN to avoid errors
+                    on: {
+                        col1: Sequelize.where(
+                            Sequelize.col("Package.courseId"), "=", Sequelize.col("Student.CourseId")
+                        ),
+                        col2: Sequelize.where(
+                            Sequelize.col("Package.packageName"), "=", Sequelize.col("Student.package")
+                        )
+                    }
+                }
+            ]
+        });
+
+        if (!student) {
+            return res.status(404).json({ message: "Student not found" });
+        }
+        // ✅ Determine correct fee based on profession
+        const courseFee =
+            student.profession === "Job Holder"
+                ? student.Package?.jobholderFee
+                : student.Package?.studentFee;
+
+        // ✅ Send Response
+        res.status(200).json({
+            ...student.toJSON(),
+            courseFee // ✅ Only return the correct fee dynamically
+        });
+    } catch (error) {
+        console.error("Error fetching student details:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.updateStudent = async (req, res) => {
+    try {
+        const { studentId } = req.params; // Extract Student ID from URL params
+        const {
+            student_name,
+            batch_no,
+            email,
+            mobile,
+            university,
+            profession,
+            company,
+            designation,
+            experience,
+            knowMe,
+            remark,
+        } = req.body; // Extract fields from request body
+
+        // ✅ Find Student by StudentId
+        const student = await Student.findOne({ where: { StudentId: studentId } });
+
+        if (!student) {
+            return res.status(404).json({ message: "Student not found" });
+        }
+
+        // ✅ Update Student Data
+        await student.update({
+            student_name,
+            batch_no,
+            email,
+            mobile,
+            university,
+            profession,
+            company,
+            designation,
+            experience,
+            knowMe,
+            remark
+        });
+
+        return res.status(200).json({
+            message: "Student details updated successfully",
+            student
+        });
+
+    } catch (error) {
+        console.error("Error updating student details:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.deleteStudentById = async (req, res) => {
+    try {
+        const { studentId } = req.params;
+
+        // ✅ Find Student
+        const student = await Student.findOne({ where: { StudentId: studentId } });
+
+        if (!student) {
+            return res.status(404).json({ message: "Student not found" });
+        }
+
+        // ✅ Delete Student Record
+        await Student.destroy({ where: { StudentId: studentId } });
+
+        // ✅ Delete Associated User Record
+        await User.destroy({ where: { username: studentId } });
+
+        res.status(200).json({ message: "Student deleted successfully." });
+
+    } catch (error) {
+        console.error("Error deleting student:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+
+
+
+

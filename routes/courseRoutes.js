@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Course = require("../models/Course.js");
 const Package = require("../models/Package");
+const { getCourseDetails } = require("../controllers/courseController.js");
 
 // ✅ Create Course API
 router.post("/create", async (req, res) => {
@@ -65,7 +66,7 @@ router.get("/list", async (req, res) => {
             include: [
                 {
                     model: Package,
-                    attributes: ["packageName", "studentFee", "jobholderFee"], // ✅ Get package details
+                    attributes: ["id","packageName", "studentFee", "jobholderFee"], // ✅ Get package details
                 }
             ]
         });
@@ -76,5 +77,6 @@ router.get("/list", async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 });
+router.get("/:courseId", getCourseDetails);
 
 module.exports = router;

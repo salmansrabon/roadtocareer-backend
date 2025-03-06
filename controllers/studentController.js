@@ -278,6 +278,9 @@ exports.updateStudent = async (req, res) => {
             return res.status(404).json({ message: "Student not found" });
         }
 
+        // ✅ Find Corresponding User by username (mapped to StudentId)
+        const user = await User.findOne({ where: { username: studentId } });
+
         // ✅ Update Student Data
         await student.update({
             student_name,
@@ -293,6 +296,11 @@ exports.updateStudent = async (req, res) => {
             remark
         });
 
+        // ✅ If email is updated, also update it in the User table
+        if (email && user) {
+            await user.update({ email });
+        }
+
         return res.status(200).json({
             message: "Student details updated successfully",
             student
@@ -303,6 +311,7 @@ exports.updateStudent = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 exports.deleteStudentById = async (req, res) => {
     try {

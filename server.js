@@ -8,6 +8,7 @@ const packageRoutes = require("./routes/packageRoutes");
 const studentRoutes = require("./routes/studentRoutes");
 const userRoutes = require('./routes/userRoutes');
 const moduleRoutes = require('./routes/moduleRoutes');
+const paymentRoutes = require("./routes/paymentRoutes");
 
 const app = express();
 app.use(cors());
@@ -19,6 +20,7 @@ app.use("/api/packages", packageRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/users",userRoutes);
 app.use("/api/modules", moduleRoutes);
+app.use("/api/payments", paymentRoutes);
 
 
 

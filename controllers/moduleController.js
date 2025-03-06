@@ -45,3 +45,29 @@ exports.listModule = async (req, res) => {
     }
 };
 
+
+exports.getModulesByCourseId = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        // ✅ Fetch modules where courseId matches
+        const modules = await Module.findAll({
+            where: { courseId },
+            attributes: ["id", "courseId", "packageId", "module", "createdAt"],
+            order: [["createdAt", "DESC"]], // Sort by latest created
+        });
+
+        if (modules.length === 0) {
+            return res.status(404).json({ success: false, message: "No modules found for this course." });
+        }
+
+        res.status(200).json({ success: true, modules });
+
+    } catch (error) {
+        console.error("Error fetching modules by courseId:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+
+

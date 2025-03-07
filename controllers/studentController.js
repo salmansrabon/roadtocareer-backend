@@ -106,7 +106,7 @@ exports.studentSignup = async (req, res) => {
             knowMe,
             opinion,
             google_access_id,
-            isEnrolled: true // Always TRUE
+            isEnrolled: false // Always FALSE
         });
 
         // ✅ Generate Secure Password
@@ -205,6 +205,7 @@ exports.getStudentById = async (req, res) => {
                 "experience",
                 "knowMe",
                 "remark",
+                "isEnrolled",
                 "createdAt"
             ],
             include: [
@@ -269,6 +270,7 @@ exports.updateStudent = async (req, res) => {
             experience,
             knowMe,
             remark,
+            isEnrolled
         } = req.body; // Extract fields from request body
 
         // ✅ Find Student by StudentId
@@ -293,7 +295,8 @@ exports.updateStudent = async (req, res) => {
             designation,
             experience,
             knowMe,
-            remark
+            remark,
+            isEnrolled
         });
 
         // ✅ If email is updated, also update it in the User table

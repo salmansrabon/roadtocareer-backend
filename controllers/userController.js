@@ -36,6 +36,7 @@ exports.updateUserStatus = async (req, res) => {
         let responseMessage = "User status updated successfully";
 
         if (isValid === 1) {
+            await student.update({ isEnrolled: 1 }); // ✅ Ensure isEnrolled = true
             // ✅ Grant Google Drive Access
             const driveResponse = await grantDriveAccess(fileId, user.email);
             if (driveResponse.success) {

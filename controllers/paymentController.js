@@ -1,6 +1,7 @@
 const Payment = require("../models/Payment");
 const Package = require("../models/Package");
 const Student = require("../models/Student");
+const { Op } = require("sequelize");
 
 exports.addPayment = async (req, res) => {
     try {
@@ -17,7 +18,13 @@ exports.addPayment = async (req, res) => {
 
         // 🔹 Get Previous Payments for the Student
         const previousPayments = await Payment.findAll({ where: { studentId, packageId } });
+         // 🔹 Get Student Details
+         const student = await Student.findOne({ where: { StudentId: studentId } });
 
+         if (!student) {
+             return res.status(404).json({ success: false, message: "Student not found!" });
+         }
+ 
         // 🔹 Calculate Remaining Balance
         const totalPaid = previousPayments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount), 0) + parseFloat(paidAmount);
         const remainingBalance = courseFee - totalPaid;
@@ -34,7 +41,7 @@ exports.addPayment = async (req, res) => {
             remainingBalance: remainingBalance >= 0 ? remainingBalance : 0, // ✅ Ensure it never goes negative
             month
         });
-
+        await student.update({ due: remainingBalance });
         res.status(201).json({ success: true, message: "Payment recorded successfully!", payment: newPayment });
 
     } catch (error) {
@@ -103,6 +110,58 @@ exports.getPaymentHistory = async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+
+
+
+/**
+ * ✅ Get Payment List API
+ * @route GET /api/payments
+ */
+exports.getPaymentsList = async (req, res) => {
+    try {
+        const { studentId, courseId, packageId, month } = req.query; // Optional filters
+
+        // ✅ Build Dynamic Query Conditions
+        let whereClause = {};
+        if (studentId) whereClause.studentId = studentId;
+        if (courseId) whereClause.courseId = courseId;
+        if (packageId) whereClause.packageId = packageId;
+        if (month) whereClause.month = { [Op.like]: `%${month}%` };
+
+        // ✅ Fetch Payments with Course & Package Details
+        const payments = await Payment.findAll({
+            where: whereClause,
+            attributes: [
+                "id",
+                "courseId",
+                "studentId",
+                "studentName",
+                "installmentNumber",
+                "installmentAmount",
+                "paidAmount",
+                "remainingBalance",
+                "month",
+                "paymentDateTime",
+                "createdAt",
+            ],
+            order: [["paymentDateTime", "DESC"]], // ✅ Sort by latest payments
+        });
+
+        // ✅ Calculate Total Paid Amount
+        const totalPaidAmount = payments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0);
+
+        return res.status(200).json({ 
+            totalPayments: payments.length, 
+            totalPaidAmount,  // ✅ Include total payment amount
+            payments 
+        });
+
+    } catch (error) {
+        console.error("Error fetching payment list:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
+
 
 
 

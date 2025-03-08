@@ -157,6 +157,8 @@ exports.getAllStudents = async (req, res) => {
                 "designation",
                 "experience",
                 "knowMe",
+                "due",
+                "isEnrolled",
                 "createdAt"
             ],
             include: [
@@ -205,6 +207,7 @@ exports.getStudentById = async (req, res) => {
                 "experience",
                 "knowMe",
                 "remark",
+                "due",
                 "isEnrolled",
                 "createdAt"
             ],

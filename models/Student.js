@@ -114,6 +114,9 @@ const Student = sequelize.define("Student", {
     },
     remark: {
         type: DataTypes.TEXT
+    },
+    due: {
+        type: DataTypes.INTEGER
     }
 }, {
     tableName: "students",

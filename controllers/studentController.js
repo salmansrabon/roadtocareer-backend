@@ -3,7 +3,7 @@ const Course = require("../models/Course");
 const Package = require("../models/Package");
 const User = require("../models/User");
 const axios = require("axios");
-const { Sequelize } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -140,11 +140,45 @@ exports.studentSignup = async (req, res) => {
         res.status(500).json({ message: "Internal server error." });
     }
 };
+
 exports.getAllStudents = async (req, res) => {
     try {
+        const {
+            courseId,
+            batch_no,
+            studentId,
+            salutation,
+            student_name,
+            email,
+            mobile,
+            university,
+            profession,
+            company,
+            isValid,
+            isEnrolled
+        } = req.query;
+
+        // ✅ Build Dynamic Query Conditions (Only add filters if provided)
+        let whereClause = {};
+
+        if (courseId) whereClause.courseId = courseId;
+        if (batch_no) whereClause.batch_no = batch_no;
+        if (studentId) whereClause.StudentId = { [Op.like]: `%${studentId}%` };
+        if (salutation) whereClause.salutation = { [Op.like]: `%${salutation}%` };
+        if (student_name) whereClause.student_name = { [Op.like]: `%${student_name}%` };
+        if (email) whereClause.email = { [Op.like]: `%${email}%` };
+        if (mobile) whereClause.mobile = { [Op.like]: `%${mobile}%` };
+        if (university) whereClause.university = { [Op.like]: `%${university}%` };
+        if (profession) whereClause.profession = { [Op.like]: `%${profession}%` };
+        if (company) whereClause.company = { [Op.like]: `%${company}%` };
+        if (isEnrolled !== undefined && isEnrolled !== "") whereClause.isEnrolled = parseInt(isEnrolled);
+
+        // ✅ Fetch Students with Filtering & Join Course & User Table
         const students = await Student.findAll({
+            where: whereClause, // Apply filters only if given
             attributes: [
                 "StudentId",
+                "salutation",
                 "student_name",
                 "email",
                 "mobile",
@@ -167,24 +201,31 @@ exports.getAllStudents = async (req, res) => {
                     attributes: ["courseId", "course_title"]
                 },
                 {
-                    model: User, // ✅ Correctly map users table
-                    attributes: ["isValid"], // ✅ Fetch `isValid` status
-                    required: false, // ✅ LEFT JOIN instead of INNER JOIN
+                    model: User,
+                    attributes: ["isValid"],
+                    required: false,
                     on: { col1: Sequelize.where(Sequelize.col("User.username"), "=", Sequelize.col("Student.StudentId")) }
                 }
             ],
-            order: [["createdAt", "DESC"]], // Sort by latest enrollment
+            order: [["createdAt", "DESC"]],
         });
 
-        // ✅ Get total student count
-        const totalStudents = await Student.count();
+        // ✅ Apply Filtering on `isValid` from User Table if given
+        let filteredStudents = students;
+        if (isValid !== undefined && isValid !== "") {
+            filteredStudents = students.filter(student => student.User && student.User.isValid == parseInt(isValid));
+        }
 
-        res.status(200).json({ totalStudents, students });
+        // ✅ Get total filtered student count
+        const totalStudents = filteredStudents.length;
+
+        return res.status(200).json({ totalStudents, students: filteredStudents });
     } catch (error) {
         console.error("Error fetching students:", error);
-        res.status(500).json({ message: "Internal server error" });
+        return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 exports.getStudentById = async (req, res) => {
     try {
         const { studentId } = req.params;
@@ -194,6 +235,7 @@ exports.getStudentById = async (req, res) => {
             where: { StudentId: studentId },
             attributes: [
                 "StudentId",
+                "salutation",
                 "student_name",
                 "email",
                 "mobile",
@@ -262,6 +304,7 @@ exports.updateStudent = async (req, res) => {
     try {
         const { studentId } = req.params; // Extract Student ID from URL params
         const {
+            salutation,
             student_name,
             batch_no,
             email,
@@ -288,6 +331,7 @@ exports.updateStudent = async (req, res) => {
 
         // ✅ Update Student Data
         await student.update({
+            salutation,
             student_name,
             batch_no,
             email,

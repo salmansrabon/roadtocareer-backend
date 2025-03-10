@@ -46,7 +46,7 @@ exports.studentSignup = async (req, res) => {
             mobile,
             university,
             courseId,
-            package_name, // ✅ Ensure these values are received
+            package_name,
             profession,
             passingYear,
             experience,
@@ -67,13 +67,20 @@ exports.studentSignup = async (req, res) => {
             return res.status(400).json({ message: "Student name, email, mobile, university, courseId, and package_name are required." });
         }
 
-        // ✅ Check if CourseId exists in `courses` table
+        // ✅ Check if Student Already Exists in this Course
+        const existingStudent = await Student.findOne({ where: { email, CourseId: courseId } });
+
+        if (existingStudent) {
+            return res.status(409).json({ message: "Student already registered in this course!" });
+        }
+
+        // ✅ Check if Course Exists
         const course = await Course.findOne({ where: { courseId } });
         if (!course) {
             return res.status(400).json({ message: "Invalid CourseId. Course does not exist." });
         }
 
-        // ✅ Check if Package exists in `packages` table
+        // ✅ Check if Package Exists for this Course
         const packageData = await Package.findOne({ where: { packageName: package_name, courseId } });
         if (!packageData) {
             return res.status(400).json({ message: "Invalid package. Package does not exist for this course." });
@@ -82,13 +89,13 @@ exports.studentSignup = async (req, res) => {
         // ✅ Generate Unique Student ID
         const studentId = await generateStudentId(student_name);
 
-        // ✅ Insert Student Data into `students` table
+        // ✅ Insert Student Data into `students` Table
         const newStudent = await Student.create({
             StudentId: studentId,
-            CourseId: courseId,  // ✅ Pass CourseId explicitly
-            package: package_name, // ✅ Pass package_name explicitly
-            batch_no: course.batch_no, // ✅ Auto-fetch batch_no from `courses`
-            courseTitle: course.course_title, // ✅ Auto-fetch courseTitle from `courses`
+            CourseId: courseId,
+            package: package_name,
+            batch_no: course.batch_no,
+            courseTitle: course.course_title,
             student_name,
             email,
             mobile,
@@ -106,40 +113,48 @@ exports.studentSignup = async (req, res) => {
             knowMe,
             opinion,
             google_access_id,
-            isEnrolled: false // Always FALSE
+            isEnrolled: false // Always FALSE initially
         });
 
         // ✅ Generate Secure Password
         const password = generatePassword();
-        //const hashedPassword = await bcrypt.hash(password, 10);
 
         // ✅ Create User in `users` Table
-        const userPayload = {
-            username: studentId, // ✅ Unique username from studentId
-            email, // ✅ Not unique, multiple students can register with the same email
-            password: password,
-            role: "student"
-        };
+        try {
+            const userPayload = {
+                username: studentId, // ✅ Unique username from studentId
+                email,
+                password,
+                role: "student"
+            };
 
-        const userResponse = await axios.post("http://localhost:5000/api/auth/register", userPayload);
+            const userResponse = await axios.post("http://localhost:5000/api/auth/register", userPayload);
 
-        if (userResponse.status !== 201) {
-            return res.status(500).json({ message: "Error creating user in users table." });
+            if (userResponse.status !== 201) {
+                throw new Error("Error creating user in users table.");
+            }
+        } catch (userError) {
+            console.error("Error creating user:", userError);
+            return res.status(500).json({ message: "Failed to create user. Please contact admin." });
         }
 
-        // ✅ Send Response
+        // ✅ Send Success Response
         res.status(201).json({
             message: "Student signup successful!",
             studentId: studentId,
-            generatedPassword: password, // ✅ Show generated password to student
+            generatedPassword: password,
             studentDetails: newStudent
         });
 
     } catch (error) {
         console.error("Error in student signup:", error);
-        res.status(500).json({ message: "Internal server error." });
+
+        // ✅ Proper Error Handling
+        const errorMessage = error.response?.data?.message || "An unexpected error occurred. Please contact admin.";
+        res.status(500).json({ message: errorMessage });
     }
 };
+
 
 exports.getAllStudents = async (req, res) => {
     try {

@@ -61,7 +61,7 @@ const Student = sequelize.define("Student", {
         type: DataTypes.INTEGER
     },
     experience: {
-        type: DataTypes.INTEGER
+        type: DataTypes.STRING
     },
     company: {
         type: DataTypes.STRING

@@ -170,8 +170,15 @@ exports.getAllStudents = async (req, res) => {
             profession,
             company,
             isValid,
-            isEnrolled
+            isEnrolled,
+            page = 1, // ✅ Default to page 1
+            limit = 10 // ✅ Default limit to 10 students per page
         } = req.query;
+
+        // ✅ Convert pagination values to numbers
+        const pageNumber = parseInt(page) || 1;
+        const limitNumber = parseInt(limit) || 10;
+        const offset = (pageNumber - 1) * limitNumber;
 
         // ✅ Build Dynamic Query Conditions (Only add filters if provided)
         let whereClause = {};
@@ -188,9 +195,12 @@ exports.getAllStudents = async (req, res) => {
         if (company) whereClause.company = { [Op.like]: `%${company}%` };
         if (isEnrolled !== undefined && isEnrolled !== "") whereClause.isEnrolled = parseInt(isEnrolled);
 
-        // ✅ Fetch Students with Filtering & Join Course & User Table
+        // ✅ Get total student count before applying pagination
+        const totalStudents = await Student.count({ where: whereClause });
+
+        // ✅ Fetch Students with Filtering & Pagination
         const students = await Student.findAll({
-            where: whereClause, // Apply filters only if given
+            where: whereClause,
             attributes: [
                 "StudentId",
                 "salutation",
@@ -223,23 +233,28 @@ exports.getAllStudents = async (req, res) => {
                 }
             ],
             order: [["createdAt", "DESC"]],
+            offset, // ✅ Pagination Offset
+            limit: limitNumber // ✅ Limit per page
         });
 
-        // ✅ Apply Filtering on `isValid` from User Table if given
+        // ✅ Apply `isValid` Filtering from User Table
         let filteredStudents = students;
         if (isValid !== undefined && isValid !== "") {
             filteredStudents = students.filter(student => student.User && student.User.isValid == parseInt(isValid));
         }
 
-        // ✅ Get total filtered student count
-        const totalStudents = filteredStudents.length;
-
-        return res.status(200).json({ totalStudents, students: filteredStudents });
+        return res.status(200).json({
+            totalStudents,
+            totalPages: Math.ceil(totalStudents / limitNumber), // ✅ Total pages for pagination
+            currentPage: pageNumber,
+            students: filteredStudents
+        });
     } catch (error) {
         console.error("Error fetching students:", error);
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 exports.getStudentById = async (req, res) => {
     try {

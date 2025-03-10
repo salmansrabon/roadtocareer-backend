@@ -119,16 +119,21 @@ exports.getPaymentHistory = async (req, res) => {
  */
 exports.getPaymentsList = async (req, res) => {
     try {
-        const { studentId, courseId, packageId, month } = req.query; // Optional filters
+        const { studentId, courseId, month, page = 1, limit = 10 } = req.query; // Default: Page 1, Limit 10
 
-        // ✅ Build Dynamic Query Conditions
+        const pageNumber = parseInt(page) || 1;
+        const limitNumber = parseInt(limit) || 10;
+        const offset = (pageNumber - 1) * limitNumber;
+
         let whereClause = {};
         if (studentId) whereClause.studentId = studentId;
         if (courseId) whereClause.courseId = courseId;
-        if (packageId) whereClause.packageId = packageId;
         if (month) whereClause.month = { [Op.like]: `%${month}%` };
 
-        // ✅ Fetch Payments with Course & Package Details
+        // ✅ Count Total Matching Payments
+        const totalPayments = await Payment.count({ where: whereClause });
+
+        // ✅ Fetch Payments with Pagination
         const payments = await Payment.findAll({
             where: whereClause,
             attributes: [
@@ -145,14 +150,18 @@ exports.getPaymentsList = async (req, res) => {
                 "createdAt",
             ],
             order: [["paymentDateTime", "DESC"]], // ✅ Sort by latest payments
+            offset, // ✅ Apply offset
+            limit: limitNumber, // ✅ Apply limit
         });
 
         // ✅ Calculate Total Paid Amount
         const totalPaidAmount = payments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0);
 
         return res.status(200).json({ 
-            totalPayments: payments.length, 
-            totalPaidAmount,  // ✅ Include total payment amount
+            totalPayments, 
+            totalPages: Math.ceil(totalPayments / limitNumber), 
+            currentPage: pageNumber, 
+            totalPaidAmount, 
             payments 
         });
 
@@ -161,6 +170,7 @@ exports.getPaymentsList = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 
 

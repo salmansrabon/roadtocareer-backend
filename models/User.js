@@ -29,7 +29,15 @@ const User = sequelize.define("User", {
         type: DataTypes.TINYINT,
         allowNull: false,
         defaultValue: 0
-    }
+    },
+    resetToken: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    resetTokenExpires: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
 }, {
     tableName: "users", // Ensure it matches your database table
     timestamps: false   // Disable createdAt & updatedAt if they don't exist in DB

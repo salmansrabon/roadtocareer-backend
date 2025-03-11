@@ -1,6 +1,9 @@
 const User = require("../models/User"); // ✅ Import Sequelize User Model
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const { Op } = require("sequelize");
+const { sendEmail } = require("../utils/emailHelper");
 
 // ✅ Register User
 exports.register = async (req, res) => {
@@ -65,4 +68,73 @@ exports.login = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+
+exports.requestPasswordReset = async (req, res) => {
+    try {
+        const { studentId } = req.body;
+
+        // ✅ Find user by studentId
+        const user = await User.findOne({ where: { username: studentId } });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // ✅ Generate Reset Token
+        const resetToken = crypto.randomBytes(32).toString("hex");
+
+        // ✅ Generate Reset Link
+        const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+        // ✅ Store token temporarily (expires in 15 mins)
+        user.resetToken = resetToken;
+        user.resetTokenExpires = Date.now() + 15 * 60 * 1000;
+        await user.save();
+
+        // ✅ Send Email with Reset Link
+        const emailBody = `
+            <p>You requested to reset your password.</p>
+            <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
+            <p>If you did not request this, ignore this email.</p>
+        `;
+
+        await sendEmail(user.email, "Password Reset Request", emailBody);
+
+        res.status(200).json({ message: "Password reset link sent to email." });
+    } catch (error) {
+        console.error("Error sending reset email:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
+exports.resetPassword = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        // ✅ Find user by token
+        const user = await User.findOne({
+            where: { resetToken: token, resetTokenExpires: { [Op.gt]: Date.now() } }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: "Invalid or expired token" });
+        }
+
+        // ✅ Hash new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // ✅ Update password & remove token
+        user.password = hashedPassword;
+        user.resetToken = null;
+        user.resetTokenExpires = null;
+        await user.save();
+
+        res.status(200).json({ message: "Password reset successful!" });
+    } catch (error) {
+        console.error("Error resetting password:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
 

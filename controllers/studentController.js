@@ -281,6 +281,7 @@ exports.getStudentById = async (req, res) => {
                 "remark",
                 "due",
                 "isEnrolled",
+                "opinion",
                 "createdAt"
             ],
             include: [
@@ -346,6 +347,7 @@ exports.updateStudent = async (req, res) => {
             experience,
             knowMe,
             remark,
+            opinion,
             isEnrolled
         } = req.body; // Extract fields from request body
 
@@ -373,6 +375,7 @@ exports.updateStudent = async (req, res) => {
             experience,
             knowMe,
             remark,
+            opinion,
             isEnrolled
         });
 

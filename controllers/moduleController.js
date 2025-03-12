@@ -68,6 +68,58 @@ exports.getModulesByCourseId = async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+exports.updateModule = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { module } = req.body; // ✅ Module data from request
+
+        // ✅ Check if Module Exists by courseId
+        const existingModule = await Module.findOne({ where: { courseId } });
+        if (!existingModule) {
+            return res.status(404).json({ message: "Module not found for the given Course ID." });
+        }
+
+        // ✅ Ensure module is stored as JSON (NOT as a string)
+        let parsedModule;
+        try {
+            parsedModule = typeof module === "string" ? JSON.parse(module) : module;
+        } catch (error) {
+            return res.status(400).json({ message: "Invalid module format!" });
+        }
+
+        // ✅ Update the Module Data
+        await existingModule.update({ module: parsedModule });
+
+        res.status(200).json({ message: "Module updated successfully!" });
+    } catch (error) {
+        console.error("Error updating module:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+exports.deleteModule = async (req, res) => {
+    try {
+        const { courseId } = req.params; // ✅ Extract courseId from URL
+
+        // ✅ Check if the module exists
+        const existingModule = await Module.findOne({ where: { courseId } });
+        if (!existingModule) {
+            return res.status(404).json({ message: "Module not found for the given Course ID." });
+        }
+
+        // ✅ Delete the module
+        await existingModule.destroy();
+
+        res.status(200).json({ message: "Module deleted successfully!" });
+    } catch (error) {
+        console.error("Error deleting module:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
+
+
+
+
 
 
 

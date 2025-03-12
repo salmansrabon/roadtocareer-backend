@@ -103,7 +103,7 @@ exports.getCourseDetails = async (req, res) => {
 exports.getCoursesList = async (req, res) => {
     try {
         const courses = await Course.findAll({
-            attributes: ["courseId", "batch_no", "course_title", "short_description", "is_enabled", "course_image"], // ✅ Select only required fields
+            attributes: ["courseId", "batch_no", "course_title","drive_folder_id", "short_description", "is_enabled", "enrollment_start_date","enrollment_end_date","orientation_date","class_start_date","class_time","course_image"], // ✅ Select only required fields
             include: [
                 {
                     model: Package,
@@ -118,3 +118,66 @@ exports.getCoursesList = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 }
+exports.updateCourse = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const {
+            batch_no,
+            course_title,
+            short_description,
+            drive_folder_id,
+            is_enabled,
+            enrollment_start_date,
+            enrollment_end_date,
+            orientation_date,
+            class_start_date,
+            class_days,
+            class_time,
+            course_image
+        } = req.body;
+
+        // ✅ Check if Course Exists
+        const course = await Course.findOne({ where: { courseId } });
+        if (!course) return res.status(404).json({ message: "Course not found." });
+
+        // ✅ Update Course Details
+        await course.update({
+            batch_no,
+            course_title,
+            short_description,
+            drive_folder_id,
+            is_enabled,
+            enrollment_start_date,
+            enrollment_end_date,
+            orientation_date,
+            class_start_date,
+            class_days, // ✅ Stored as JSON string
+            class_time,
+            course_image
+        });
+
+        res.status(200).json({ message: "Course updated successfully!", course });
+    } catch (error) {
+        console.error("Error updating course:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
+exports.deleteCourse = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        // ✅ Check if Course Exists
+        const course = await Course.findOne({ where: { courseId } });
+        if (!course) return res.status(404).json({ message: "Course not found." });
+
+        // ✅ Delete Course
+        await course.destroy();
+
+        res.status(200).json({ message: "Course deleted successfully!" });
+    } catch (error) {
+        console.error("Error deleting course:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+

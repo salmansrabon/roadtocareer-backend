@@ -5,7 +5,7 @@ const { Op } = require("sequelize");
 
 exports.addPayment = async (req, res) => {
     try {
-        const { courseId, packageId, studentId, studentName, installmentNumber, installmentAmount, paidAmount, month } = req.body;
+        const { courseId, packageId, studentId, studentName, installmentNumber, installmentAmount, paidAmount, month, remarks } = req.body;
 
         // 🔹 Get Course Fee
         const packageDetails = await Package.findOne({ where: { id: packageId } });
@@ -39,7 +39,8 @@ exports.addPayment = async (req, res) => {
             installmentAmount,
             paidAmount,
             remainingBalance: remainingBalance >= 0 ? remainingBalance : 0, // ✅ Ensure it never goes negative
-            month
+            month,
+            remarks
         });
         await student.update({ due: remainingBalance });
         res.status(201).json({ success: true, message: "Payment recorded successfully!", payment: newPayment });
@@ -170,6 +171,44 @@ exports.getPaymentsList = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
+exports.getStudentPayments = async (req, res) => {
+    try {
+        const { username } = req.body; // ✅ Get studentId from request payload
+
+        if (!username) {
+            return res.status(400).json({ success: false, message: "Student ID (username) is required." });
+        }
+
+        // ✅ Fetch Payments for the Given Student
+        const payments = await Payment.findAll({
+            where: { studentId: username },
+            order: [["installmentNumber", "ASC"]],
+            attributes: ["installmentNumber", "installmentAmount", "paidAmount", "remainingBalance", "month", "paymentDateTime"],
+        });
+
+        if (!payments || payments.length === 0) {
+            return res.status(404).json({ success: false, message: "No payments found for this student." });
+        }
+
+        // ✅ Calculate Total Paid & Remaining Balance
+        const totalPaid = payments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount), 0);
+        const remainingBalance = payments[payments.length - 1].remainingBalance;
+
+        res.status(200).json({
+            success: true,
+            studentId: username,
+            studentName: payments[0].studentName, // ✅ Get Name from first entry
+            totalPaid: totalPaid.toFixed(2),
+            remainingBalance: remainingBalance,
+            installments: payments,
+        });
+    } catch (error) {
+        console.error("Error fetching student payments:", error);
+        res.status(500).json({ success: false, message: "Internal server error." });
+    }
+};
+
 
 
 

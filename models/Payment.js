@@ -55,6 +55,10 @@ const Payment = sequelize.define("Payment", {
         type: DataTypes.STRING,
         allowNull: false
     },
+    remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
     paymentDateTime: {
         type: DataTypes.DATE,
         allowNull: false,

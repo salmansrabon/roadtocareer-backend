@@ -2,8 +2,10 @@ const Student = require("../models/Student");
 const Course = require("../models/Course");
 const Package = require("../models/Package");
 const User = require("../models/User");
+const Attendance = require("../models/Attendance");
 const axios = require("axios");
 const { Op, Sequelize } = require("sequelize");
+const moment = require("moment");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -420,6 +422,125 @@ exports.deleteStudentById = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+exports.markAttendance = async (req, res) => {
+    try {
+        const { studentId, date, time } = req.body;
+
+        if (!studentId || !date || !time) {
+            return res.status(400).json({ message: "Missing required fields: studentId, date, time." });
+        }
+
+        // ✅ Fetch Student Details
+        const student = await Student.findOne({ where: { StudentId: studentId } });
+
+        if (!student) {
+            return res.status(404).json({ message: "Student not found." });
+        }
+
+        // ✅ Fetch Course Details for Class Time Validation
+        const course = await Course.findOne({ where: { courseId: student.CourseId } });
+
+        if (!course) {
+            return res.status(404).json({ message: "Course not found." });
+        }
+
+        const classTime = moment(`${date} ${course.class_time}`, "DD-MM-YYYY hh:mm:ss A");
+        const maxAllowedTime = classTime.clone().add(2, "hours"); // ✅ Allow up to 2 hours after class time
+        const submittedTime = moment(`${date} ${time}`, "DD-MM-YYYY hh:mm:ss A");
+
+        if (submittedTime.isBefore(classTime) || submittedTime.isAfter(maxAllowedTime)) {
+            return res.status(400).json({ message: "Please give attendance on class time." });
+        }
+
+        // ✅ Check if Attendance Exists for Student
+        let attendance = await Attendance.findOne({ where: { StudentId: studentId } });
+
+        if (!attendance) {
+            // ✅ Create Attendance Record if Not Exists
+            attendance = await Attendance.create({
+                courseId: student.CourseId,
+                courseTitle: student.courseTitle,
+                batch_no: student.batch_no,
+                StudentId: student.StudentId,
+                student_name: student.student_name,
+                attendanceList: JSON.stringify([]) // Ensure it's initialized properly
+            });
+        }
+
+        // ✅ Parse Existing Attendance List (If Stored as String)
+        let updatedAttendanceList;
+        if (typeof attendance.attendanceList === "string") {
+            updatedAttendanceList = JSON.parse(attendance.attendanceList);
+        } else {
+            updatedAttendanceList = attendance.attendanceList || [];
+        }
+
+        // ✅ Append New Attendance Record
+        updatedAttendanceList.push({ time: `${date} ${time}` });
+
+        // ✅ Update Attendance Table (Ensure JSON is Stored Properly)
+        await attendance.update({
+            attendanceList: JSON.stringify(updatedAttendanceList) // Convert back to string if using LONGTEXT
+        });
+
+        // ✅ Calculate Attendance Percentage
+        const totalClicks = updatedAttendanceList.length;
+        const attendancePercentage = ((totalClicks / 30) * 100).toFixed(2);
+
+        return res.status(200).json({
+            message: "Attendance marked successfully!",
+            attendancePercentage: `${attendancePercentage}%`,
+            totalClicks
+        });
+
+    } catch (error) {
+        console.error("Error marking attendance:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+
+exports.getAttendance = async (req, res) => {
+    try {
+        const { studentId } = req.params;
+
+        // ✅ Fetch Attendance Record for the Given Student ID
+        const attendance = await Attendance.findOne({ where: { StudentId: studentId } });
+
+        if (!attendance) {
+            return res.status(404).json({ message: "No attendance record found for this student." });
+        }
+
+        // ✅ Parse `attendanceList` if stored as a String
+        let parsedAttendanceList;
+        try {
+            parsedAttendanceList = typeof attendance.attendanceList === "string"
+                ? JSON.parse(attendance.attendanceList)
+                : attendance.attendanceList;
+        } catch (error) {
+            return res.status(400).json({ message: "Error parsing attendance data!" });
+        }
+
+        // ✅ Construct Response
+        const response = {
+            studentId: attendance.StudentId,
+            studentName: attendance.student_name,
+            courseId: attendance.courseId,
+            courseTitle: attendance.courseTitle,
+            batch_no: attendance.batch_no,
+            attendanceList: parsedAttendanceList, // ✅ Proper JSON format
+            totalClicks: parsedAttendanceList.length,
+            attendancePercentage: `${((parsedAttendanceList.length / 30) * 100).toFixed(2)}%`
+        };
+
+        return res.status(200).json(response);
+
+    } catch (error) {
+        console.error("Error fetching attendance:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+
 
 
 

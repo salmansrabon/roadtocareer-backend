@@ -27,12 +27,15 @@ exports.updateUserStatus = async (req, res) => {
             include: [{ model: Course, attributes: ["drive_folder_id"] }]
         });
 
-        if (!student || !student.Course.drive_folder_id) {
-            return res.status(404).json({ message: "Student or Drive folder ID not found." });
+        if (!student) {
+            return res.status(404).json({ message: "Student not found." });
         }
 
-        const fileId = student.Course.drive_folder_id;
         let responseMessage = "User status updated successfully";
+        const fileId = student.Course?.drive_folder_id;
+
+        // ✅ Update isValid Status First
+        await user.update({ isValid });
 
         if (isValid === 1) {
             if (!student.isEnrolled) {
@@ -44,24 +47,28 @@ exports.updateUserStatus = async (req, res) => {
                 await user.update({ password: hashedPassword });
 
                 // ✅ Send Email
-                await sendEmail(user.email, 
-                    "Your Road to SDET Account Password Reset", 
+                await sendEmail(user.email,
+                    "Your Road to SDET Account Password Reset",
                     `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 studentId: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.\n\nRegards,\nRoad to SDET Team`
                 );
 
                 responseMessage += " & New password sent to email";
             }
 
-            // ✅ Grant Drive Access
-            const driveResponse = await grantDriveAccess(fileId, user.email);
-            if (driveResponse.success) {
-                await student.update({ google_access_id: driveResponse.permissionId });
-                responseMessage += " & Drive access granted";
+            // ✅ Try to Grant Drive Access (But do not block user activation if failed)
+            if (fileId) {
+                const driveResponse = await grantDriveAccess(fileId, user.email);
+                if (driveResponse.success) {
+                    await student.update({ google_access_id: driveResponse.permissionId });
+                    responseMessage += " & Drive access granted";
+                } else {
+                    responseMessage += " & Google Drive access failed to grant"; // ✅ Add failure message but do not stop execution
+                }
             } else {
-                return res.status(500).json({ message: "Failed to grant Drive access", error: driveResponse.error });
+                responseMessage += " & No Drive folder ID available for access";
             }
         } else {
-            if (student.google_access_id) {
+            if (student.google_access_id && fileId) {
                 const revokeResponse = await removeDriveAccess(fileId, student.google_access_id);
                 if (!revokeResponse.success) {
                     return res.status(500).json({ message: "Failed to revoke Drive access", error: revokeResponse.error });
@@ -71,7 +78,6 @@ exports.updateUserStatus = async (req, res) => {
             }
         }
 
-        await user.update({ isValid });
         return res.status(200).json({ message: responseMessage, isValid });
 
     } catch (error) {
@@ -79,3 +85,4 @@ exports.updateUserStatus = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+

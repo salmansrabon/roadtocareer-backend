@@ -445,10 +445,12 @@ exports.markAttendance = async (req, res) => {
             return res.status(404).json({ message: "Course not found." });
         }
 
-        const classTime = moment(`${date} ${course.class_time}`, "DD-MM-YYYY hh:mm:ss A");
+        // ✅ Define class time and valid attendance window (class time + 2 hours)
+        const classTime = moment(`${date} ${course.class_time}`, "DD-MM-YYYY HH:mm:ss");
         const maxAllowedTime = classTime.clone().add(2, "hours"); // ✅ Allow up to 2 hours after class time
         const submittedTime = moment(`${date} ${time}`, "DD-MM-YYYY hh:mm:ss A");
 
+        // ✅ If submitted time is outside the valid window, reject the request
         if (submittedTime.isBefore(classTime) || submittedTime.isAfter(maxAllowedTime)) {
             return res.status(400).json({ message: "Please give attendance on class time." });
         }
@@ -468,18 +470,25 @@ exports.markAttendance = async (req, res) => {
             });
         }
 
-        // ✅ Parse Existing Attendance List (If Stored as String)
-        let updatedAttendanceList;
-        if (typeof attendance.attendanceList === "string") {
-            updatedAttendanceList = JSON.parse(attendance.attendanceList);
-        } else {
-            updatedAttendanceList = attendance.attendanceList || [];
+        // ✅ Parse Existing Attendance List
+        let updatedAttendanceList = attendance.attendanceList ? JSON.parse(attendance.attendanceList) : [];
+
+        // ✅ Check if student already marked attendance within the valid window
+        const lastAttendanceEntry = updatedAttendanceList.length > 0 ? updatedAttendanceList[updatedAttendanceList.length - 1] : null;
+
+        if (lastAttendanceEntry) {
+            const lastAttendanceTime = moment(lastAttendanceEntry.time, "DD-MM-YYYY hh:mm:ss A");
+
+            // ✅ If last attendance falls within class time window, reject new attendance
+            if (lastAttendanceTime.isSameOrAfter(classTime) && lastAttendanceTime.isSameOrBefore(maxAllowedTime)) {
+                return res.status(400).json({ message: "You have already given attendance for this session." });
+            }
         }
 
         // ✅ Append New Attendance Record
         updatedAttendanceList.push({ time: `${date} ${time}` });
 
-        // ✅ Update Attendance Table (Ensure JSON is Stored Properly)
+        // ✅ Update Attendance Table
         await attendance.update({
             attendanceList: JSON.stringify(updatedAttendanceList) // Convert back to string if using LONGTEXT
         });
@@ -499,6 +508,7 @@ exports.markAttendance = async (req, res) => {
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };
+
 
 exports.getAttendance = async (req, res) => {
     try {
@@ -540,6 +550,60 @@ exports.getAttendance = async (req, res) => {
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };
+exports.getAllAttendance = async (req, res) => {
+    try {
+        // ✅ Extract Query Parameters for Filtering & Pagination
+        const { courseId, batch_no, student_name, limit = 10, offset = 0 } = req.query;
+
+        // ✅ Create Filter Conditions
+        const whereCondition = {};
+        if (courseId) whereCondition.courseId = courseId;
+        if (batch_no) whereCondition.batch_no = batch_no;
+        if (student_name) whereCondition.student_name = { [Op.like]: `%${student_name}%` }; // ✅ Partial match search
+
+        const totalRecords = await Attendance.count({ where: whereCondition });
+
+        // ✅ Fetch Attendance Records with Pagination & Filters
+        const attendanceRecords = await Attendance.findAll({
+            where: whereCondition, // ✅ Apply filters
+            attributes: ["courseId", "courseTitle", "batch_no", "StudentId", "student_name", "attendanceList"],
+            order: [["createdAt", "DESC"]], // ✅ Order by latest attendance
+            limit: parseInt(limit), // ✅ Limit number of records
+            offset: parseInt(offset) // ✅ Skip records for pagination
+        });
+
+        const formattedAttendanceRecords = attendanceRecords.map(record => {
+            const parsedAttendanceList = Array.isArray(record.attendanceList)
+                ? record.attendanceList
+                : JSON.parse(record.attendanceList || "[]");
+
+            return {
+                courseId: record.courseId,
+                courseTitle: record.courseTitle,
+                batch_no: record.batch_no,
+                StudentId: record.StudentId,
+                student_name: record.student_name,
+                attendanceList: parsedAttendanceList, // ✅ Use parsed list
+                totalClicks: parsedAttendanceList.length,
+                attendancePercentage: ((parsedAttendanceList.length / 30) * 100).toFixed(2) + "%"
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            totalRecords, // ✅ Total number of filtered students
+            totalPages: Math.ceil(totalRecords / limit), // ✅ Calculate total pages
+            currentPage: Math.floor(offset / limit) + 1, // ✅ Calculate current page
+            attendanceRecords: formattedAttendanceRecords
+        });
+
+    } catch (error) {
+        console.error("Error fetching attendance records:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+
 
 
 

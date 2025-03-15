@@ -117,6 +117,9 @@ const Student = sequelize.define("Student", {
     },
     due: {
         type: DataTypes.INTEGER
+    },
+    quiz_answer: {
+        type: DataTypes.JSON
     }
 }, {
     tableName: "students",

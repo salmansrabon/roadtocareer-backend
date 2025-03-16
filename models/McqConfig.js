@@ -28,7 +28,7 @@ const McqConfig = sequelize.define("McqConfig", {
         defaultValue: true
     },
     totalTime: {
-        type: DataTypes.STRING,
+        type: DataTypes.INTEGER,
         allowNull: false
     },
     start_datetime: {

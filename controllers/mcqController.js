@@ -2,7 +2,7 @@ const MCQ = require("../models/MCQ");
 const Course = require("../models/Course");
 const sequelize = require("../config/db")
 const Student = require("../models/Student");
-const McqConfig = require("../models/MCQConfig");
+const McqConfig = require("../models/McqConfig");
 
 exports.addMCQ = async (req, res) => {
     try {
@@ -288,6 +288,84 @@ exports.checkQuizAttempt = async (req, res) => {
 
     } catch (error) {
         console.error("Error checking quiz attempt:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+exports.getAllStudentsResultsByCourse = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        // ✅ Fetch all students for the given CourseId
+        const students = await Student.findAll({
+            where: { CourseId: courseId },
+            attributes: ["StudentId", "student_name", "quiz_answer"]
+        });
+
+        if (!students.length) {
+            return res.status(404).json({ message: "No students found for this course." });
+        }
+
+        const studentResults = [];
+
+        for (const student of students) {
+            let parsedQuizAnswer;
+            try {
+                parsedQuizAnswer = typeof student.quiz_answer === "string"
+                    ? JSON.parse(student.quiz_answer)
+                    : student.quiz_answer;
+            } catch (error) {
+                console.error("Error parsing quiz_answer JSON:", error);
+                continue;
+            }
+
+            if (!Array.isArray(parsedQuizAnswer) || parsedQuizAnswer.length === 0) {
+                continue;
+            }
+
+            let totalMarks = 0;
+            const answerSheet = [];
+
+            for (const attempt of parsedQuizAnswer) {
+                const { mcq_id, question, user_answer, correct_answer, isCorrect, attempted_at } = attempt;
+
+                if (!mcq_id) {
+                    console.warn(`Skipping invalid MCQ entry for student: ${student.StudentId}`);
+                    continue;
+                }
+
+                if (isCorrect) totalMarks += 1;
+
+                answerSheet.push({
+                    mcq_id,
+                    question,
+                    correct_answer,
+                    student_answer: user_answer,
+                    isCorrect,
+                    attempted_at
+                });
+            }
+
+            const mcqConfig = await McqConfig.findOne({
+                where: { CourseId: courseId }
+            });
+
+            studentResults.push({
+                StudentId: student.StudentId,
+                student_name: student.student_name,
+                totalMarks: totalMarks,
+                totalQuestions: mcqConfig ? mcqConfig.totalQuestion : 0,
+                answerSheet
+            });
+        }
+
+        if (studentResults.length === 0) {
+            return res.status(404).json({ message: "No quiz results found for this course." });
+        }
+
+        return res.status(200).json({ courseId, results: studentResults });
+
+    } catch (error) {
+        console.error("Error fetching all students' MCQ results:", error);
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };

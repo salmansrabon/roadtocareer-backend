@@ -90,12 +90,12 @@ exports.getMCQ = async (req, res) => {
             console.error("Error parsing mcq_question:", error);
             return res.status(500).json({ message: "Invalid JSON format in MCQ data." });
         }
-
+        const { correct_answer, ...questionWithoutAnswer } = parsedQuestion;
         return res.status(200).json({
             mcq_id: selectedMCQ.id, // ✅ Actual MCQ ID from DB
             ques: questionIndex, // ✅ Row Position after Filtering
             CourseId: selectedMCQ.CourseId,
-            mcq_question: parsedQuestion
+            mcq_question: questionWithoutAnswer
         });
 
     } catch (error) {

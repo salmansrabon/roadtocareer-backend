@@ -6,6 +6,7 @@ const Attendance = require("../models/Attendance");
 const axios = require("axios");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
+const { sendEmail } = require("../utils/emailHelper");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -129,7 +130,6 @@ exports.studentSignup = async (req, res) => {
                 password,
                 role: "student"
             };
-
             const userResponse = await axios.post("http://localhost:5000/api/auth/register", userPayload);
 
             if (userResponse.status !== 201) {
@@ -140,6 +140,68 @@ exports.studentSignup = async (req, res) => {
             return res.status(500).json({ message: "Failed to create user. Please contact admin." });
         }
 
+        try {
+            const formattedClassDays = Array.isArray(course.class_days) 
+            ? course.class_days.join(", ") 
+            : course.class_days.replace(/[\[\]"]/g, "");
+            const studentEmailBody = `
+                Dear ${student_name},
+
+                Thanks for your enrollment with us.
+
+                Course Details:
+                ---------------------
+                Course Title: ${course.course_title}
+                Batch No: ${course.batch_no}
+                Orientation Date: ${course.orientation_date}
+                Class Start Date: ${course.class_start_date}
+                Class Days: ${formattedClassDays}
+                Class Time: ${course.class_time}
+
+                Thank you for joining!
+
+                Regards,
+                Course Admin
+            `;
+
+            await sendEmail(email, "Welcome to the Course!", studentEmailBody);
+
+        } catch (emailError) {
+            console.error("❌ Error sending email to student:", emailError);
+            return res.status(500).json({ message: "Student registered but email sending failed. Please contact admin." });
+        }
+
+        // ✅ Fetch Admin Users and Send Notification Email
+        try {
+            const adminUsers = await User.findAll({ where: { role: "admin" } });
+
+            if (adminUsers.length > 0) {
+                const adminEmails = adminUsers.map(admin => admin.email);
+
+                const adminEmailBody = `
+                    A new student has enrolled.
+
+                    Student Details:
+                    ---------------------
+                    Student Name: ${student_name}
+                    Course Title: ${course.course_title}
+                    Batch No: ${course.batch_no}
+                    Profession: ${profession}
+                    Passing Year: ${passingYear}
+                    
+                    Please review and confirm the enrollment.
+
+                    Regards,
+                    System Notification
+                `;
+
+                await sendEmail(adminEmails.join(","), "New Student Enrollment", adminEmailBody);
+                console.log("📧 Notification email sent to admin.");
+            }
+        } catch (adminEmailError) {
+            console.error("❌ Error sending email to admin:", adminEmailError);
+        }
+
         // ✅ Send Success Response
         res.status(201).json({
             message: "Student signup successful!",
@@ -147,6 +209,7 @@ exports.studentSignup = async (req, res) => {
             generatedPassword: password,
             studentDetails: newStudent
         });
+        
 
     } catch (error) {
         console.error("Error in student signup:", error);

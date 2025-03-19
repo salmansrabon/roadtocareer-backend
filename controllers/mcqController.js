@@ -33,6 +33,49 @@ exports.addMCQ = async (req, res) => {
     }
 };
 
+exports.updateMCQ = async (req, res) => {
+    try {
+        const { mcq_id } = req.params;
+        const { question_title, option_1, option_2, option_3, option_4, correct_answer } = req.body;
+
+        // ✅ Check if MCQ Exists
+        const mcq = await MCQ.findByPk(mcq_id);
+        if (!mcq) {
+            return res.status(404).json({ success: false, message: "MCQ not found." });
+        }
+
+        // ✅ Extract Existing MCQ JSON Object
+        let updatedMcqQuestion = { ...mcq.mcq_question };
+
+        // ✅ Update Only Provided Fields
+        if (question_title) updatedMcqQuestion.question_title = question_title;
+        if (option_1) updatedMcqQuestion.option_1 = option_1;
+        if (option_2) updatedMcqQuestion.option_2 = option_2;
+        if (option_3) updatedMcqQuestion.option_3 = option_3;
+        if (option_4) updatedMcqQuestion.option_4 = option_4;
+        if (correct_answer) updatedMcqQuestion.correct_answer = correct_answer;
+
+        // ✅ Mark JSON Field as Changed
+        mcq.mcq_question = updatedMcqQuestion;
+        mcq.changed("mcq_question", true);  // ✅ Explicitly mark JSON field as changed
+
+        // ✅ Update MCQ Record in DB
+        await mcq.save();  // ✅ Use save() instead of update()
+
+        return res.status(200).json({
+            success: true,
+            message: "MCQ updated successfully.",
+            updatedMcq: mcq
+        });
+
+    } catch (error) {
+        console.error("Error updating MCQ:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error." });
+    }
+};
+
+
+
 // ✅ API to Fetch a Unique Random MCQ
 exports.getMCQ = async (req, res) => {
     try {

@@ -93,11 +93,9 @@ exports.requestPasswordReset = async (req, res) => {
         await user.save();
 
         // ✅ Send Email with Reset Link
-        const emailBody = `
-            <p>You requested to reset your password.</p>
-            <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
-            <p>If you did not request this, ignore this email.</p>
-        `;
+        const emailBody = `You requested to reset your password. 
+        Click ${resetLink} here to reset your password.
+        If you did not request this, ignore this email.`;
 
         await sendEmail(user.email, "Password Reset Request", emailBody);
 

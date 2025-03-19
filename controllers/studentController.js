@@ -10,25 +10,30 @@ const { sendEmail } = require("../utils/emailHelper");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
-    if (!student_name || student_name.length < 5) {
-        student_name = "random"; // Fallback in case the name is too short
+    if (!student_name || student_name.length < 2) {
+        student_name = "XX"; // Fallback if the name is too short
     }
 
-    // Extract random 5 letters from student name
-    const namePart = student_name.toLowerCase().replace(/\s+/g, "").substring(0, 5);
+    // Extract initials from the student's name
+    const nameParts = student_name.split(" ").filter(part => part.length > 0);
+    let initials = nameParts.map(part => part[0].toUpperCase()).join("");
+
+    // If initials exceed 4 letters, limit them to the first 4 characters
+    initials = initials.substring(0, 4);
 
     let newId;
     let isUnique = false;
 
     while (!isUnique) {
-        const randomNum = Math.floor(100 + Math.random() * 900); // 3-digit random number
-        newId = `sdet${namePart}${randomNum}`; // Example: "SDETdoe123"
+        const randomNum = Math.floor(10000 + Math.random() * 90000); // Generate a 5-digit random number
+        newId = `${initials}${randomNum}`; // Example: "FH42564"
 
         const existingStudent = await Student.findOne({ where: { StudentId: newId } });
         if (!existingStudent) isUnique = true;
     }
     return newId;
 };
+
 
 // ✅ Function to Generate Secure Random Password
 const generatePassword = () => {

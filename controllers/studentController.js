@@ -351,6 +351,7 @@ exports.getStudentById = async (req, res) => {
                 "remark",
                 "due",
                 "isEnrolled",
+                "certificate",
                 "opinion",
                 "createdAt"
             ],
@@ -403,7 +404,7 @@ exports.getStudentById = async (req, res) => {
 
 exports.updateStudent = async (req, res) => {
     try {
-        const { studentId } = req.params; // Extract Student ID from URL params
+        const { studentId } = req.params;
         const {
             salutation,
             student_name,
@@ -418,7 +419,8 @@ exports.updateStudent = async (req, res) => {
             knowMe,
             remark,
             opinion,
-            isEnrolled
+            isEnrolled,
+            certificate
         } = req.body; // Extract fields from request body
 
         // ✅ Find Student by StudentId
@@ -446,7 +448,8 @@ exports.updateStudent = async (req, res) => {
             knowMe,
             remark,
             opinion,
-            isEnrolled
+            isEnrolled,
+            certificate
         });
 
         // ✅ If email is updated, also update it in the User table

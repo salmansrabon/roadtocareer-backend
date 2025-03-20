@@ -84,8 +84,9 @@ const Student = sequelize.define("Student", {
             key: "email"
         }
     },
-    student_image: {
-        type: DataTypes.TEXT
+    certificate: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
     isEnrolled: {
         type: DataTypes.BOOLEAN,

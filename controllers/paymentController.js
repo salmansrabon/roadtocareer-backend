@@ -1,6 +1,7 @@
 const Payment = require("../models/Payment");
 const Package = require("../models/Package");
 const Student = require("../models/Student");
+const Course = require("../models/Course");
 const { Op } = require("sequelize");
 
 exports.addPayment = async (req, res) => {
@@ -120,7 +121,7 @@ exports.getPaymentHistory = async (req, res) => {
  */
 exports.getPaymentsList = async (req, res) => {
     try {
-        const { studentId, courseId, month, page = 1, limit = 10 } = req.query; // Default: Page 1, Limit 10
+        const { studentId, courseId, month, page = 1, limit = 10 } = req.query;
 
         const pageNumber = parseInt(page) || 1;
         const limitNumber = parseInt(limit) || 10;
@@ -131,10 +132,18 @@ exports.getPaymentsList = async (req, res) => {
         if (courseId) whereClause.courseId = courseId;
         if (month) whereClause.month = { [Op.like]: `%${month}%` };
 
-        // ✅ Count Total Matching Payments
+        // ✅ Count total matching payments (unaffected by pagination)
         const totalPayments = await Payment.count({ where: whereClause });
 
-        // ✅ Fetch Payments with Pagination
+        // ✅ Calculate total paid amount from all matching payments
+        const allMatchingPayments = await Payment.findAll({
+            where: whereClause,
+            attributes: ["paidAmount"]
+        });
+
+        const totalPaidAmount = allMatchingPayments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0);
+
+        // ✅ Fetch paginated payments
         const payments = await Payment.findAll({
             where: whereClause,
             attributes: [
@@ -150,20 +159,17 @@ exports.getPaymentsList = async (req, res) => {
                 "paymentDateTime",
                 "createdAt",
             ],
-            order: [["paymentDateTime", "DESC"]], // ✅ Sort by latest payments
-            offset, // ✅ Apply offset
-            limit: limitNumber, // ✅ Apply limit
+            order: [["paymentDateTime", "DESC"]],
+            offset,
+            limit: limitNumber,
         });
 
-        // ✅ Calculate Total Paid Amount
-        const totalPaidAmount = payments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0);
-
         return res.status(200).json({ 
-            totalPayments, 
-            totalPages: Math.ceil(totalPayments / limitNumber), 
-            currentPage: pageNumber, 
-            totalPaidAmount, 
-            payments 
+            totalPayments,
+            totalPages: Math.ceil(totalPayments / limitNumber),
+            currentPage: pageNumber,
+            totalPaidAmount,
+            payments
         });
 
     } catch (error) {
@@ -171,6 +177,7 @@ exports.getPaymentsList = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 exports.getStudentPayments = async (req, res) => {
     try {
@@ -208,6 +215,80 @@ exports.getStudentPayments = async (req, res) => {
         res.status(500).json({ success: false, message: "Internal server error." });
     }
 };
+
+exports.getUnpaidStudents = async (req, res) => {
+    try {
+        const { courseId, month, batch_no, limit = 10, offset = 0 } = req.query;
+
+        // ✅ Build Where Clause for Filtering
+        let whereClause = {};
+        if (courseId) whereClause.CourseId = courseId;
+        if (batch_no) whereClause.batch_no = batch_no; // ✅ Filter by batch_no
+
+        // ✅ Fetch All Students for the Given Course & Batch
+        const allStudents = await Student.findAll({
+            where: whereClause,
+            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email"],
+            include: [
+                {
+                    model: Course,
+                    attributes: ["course_title", "batch_no"],
+                }
+            ]
+        });
+
+        // ✅ Extract Student IDs
+        const studentIds = allStudents.map(student => student.StudentId);
+        if (studentIds.length === 0) {
+            return res.status(404).json({ success: false, message: "No students found for the given filters." });
+        }
+
+        // ✅ Fetch Paid Students (Only if Month is Provided)
+        let paidStudentsQuery = { studentId: studentIds };
+        if (month) paidStudentsQuery.month = month; // ✅ Filter by Month if provided
+
+        const paidStudents = await Payment.findAll({
+            where: paidStudentsQuery,
+            attributes: ["studentId"],
+            group: ["studentId"], // ✅ Ensure unique students
+        });
+
+        // ✅ Convert Paid Student IDs to a Set
+        const paidStudentIds = new Set(paidStudents.map(p => p.studentId));
+
+        // ✅ Filter Unpaid Students
+        const unpaidStudents = allStudents
+            .filter(student => !paidStudentIds.has(student.StudentId))
+            .map(student => ({
+                studentId: student.StudentId,
+                student_name: student.student_name,
+                courseId: student.CourseId,
+                courseTitle: student.courseTitle,
+                batch_no: student.batch_no,
+                mobile: student.mobile,
+                email: student.email,
+            }));
+
+        // ✅ Pagination Metadata
+        const totalUnpaid = unpaidStudents.length;
+        const totalPages = Math.ceil(totalUnpaid / limit);
+
+        res.status(200).json({
+            success: true,
+            totalUnpaid,
+            totalPages,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            unpaidStudents: unpaidStudents.slice(offset, offset + parseInt(limit)), // ✅ Paginate results
+        });
+
+    } catch (error) {
+        console.error("❌ Error fetching unpaid students:", error);
+        res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+
 
 
 

@@ -3,6 +3,7 @@ const Package = require("../models/Package");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
 const { Op } = require("sequelize");
+const { sendEmail } = require("../utils/emailHelper");
 
 exports.addPayment = async (req, res) => {
     try {
@@ -15,7 +16,7 @@ exports.addPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Package not found!" });
         }
 
-        const courseFee = parseFloat(packageDetails.studentFee); // ✅ Assuming studentFee is applicable
+        const courseFee = parseFloat(packageDetails.studentFee);
 
         // 🔹 Get Previous Payments for the Student
         const previousPayments = await Payment.findAll({ where: { studentId, packageId } });
@@ -45,6 +46,7 @@ exports.addPayment = async (req, res) => {
         });
         await student.update({ due: remainingBalance });
         res.status(201).json({ success: true, message: "Payment recorded successfully!", payment: newPayment });
+        sendEmail(student.email, "Road to SDET Payment Confirmation", `Dear ${student.student_name},\n\nYour payment of ${paidAmount} Tk has been received successfully for the month of ${month}.\n\nThank you for your payment.\n\nRegards,\nRoad to SDET Team`);
 
     } catch (error) {
         console.error("Error adding payment:", error);

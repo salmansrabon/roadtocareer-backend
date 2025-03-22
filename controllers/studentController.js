@@ -169,7 +169,7 @@ exports.studentSignup = async (req, res) => {
                 Course Admin
             `;
 
-            await sendEmail(email, "Welcome to the Course!", studentEmailBody);
+            await sendEmail(email, "Road to SDET-Welcome to our Course!", studentEmailBody);
 
         } catch (emailError) {
             console.error("❌ Error sending email to student:", emailError);

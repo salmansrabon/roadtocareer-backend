@@ -8,10 +8,11 @@ const router = express.Router();
 router.post("/add", authenticateUser, requireAdmin, addMCQ);
 router.put("/update/:mcq_id", updateMCQ);
 router.get("/fetch/:courseId", getMCQ);
+router.get("/admin/fetch/:courseId", authenticateUser, requireAdmin, getMCQ);
 router.get("/fetch", authenticateUser, requireAdmin, getMCQ);
 router.post("/validate", validateMCQAnswer);
 router.get("/result/:studentId", getStudentResult);
-router.get("/result/list/:courseId", getAllStudentsResultsByCourse);
+router.get("/result/list/:courseId", authenticateUser,requireAdmin, getAllStudentsResultsByCourse);
 router.get("/attempt-status/:studentId", checkQuizAttempt);
 
 module.exports = router;

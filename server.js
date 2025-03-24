@@ -27,7 +27,7 @@ app.use("/api/students", studentRoutes);
 app.use("/api/users",userRoutes);
 app.use("/api/modules", moduleRoutes);
 app.use("/api/payments", paymentRoutes);
-app.use("/api", teamRoutes);
+app.use("/api/teams", teamRoutes);
 app.use("/images", express.static(path.join(__dirname, "images")));
 app.use("/api/images", imageRoutes);
 app.use("/api/reviews", reviewRoutes);

@@ -1,4 +1,6 @@
 require("dotenv").config();
+const {runSeeders} = require("./scripts/seed");
+
 const express = require("express");
 const cors = require("cors");
 
@@ -24,7 +26,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/packages", packageRoutes);
 app.use("/api/students", studentRoutes);
-app.use("/api/users",userRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/modules", moduleRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/teams", teamRoutes);
@@ -37,4 +39,7 @@ app.use("/api/mcq-config", mcqConfigRoutes);
 
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, async () => {
+    console.log(`Server running on port ${PORT}`),
+    await runSeeders();
+});

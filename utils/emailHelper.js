@@ -34,6 +34,11 @@ async function sendEmail(to, subject, text) {
         ).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
         // ✅ Send the email
+        console.log(process.env.SEND_MAIL);
+        if(process.env.SEND_MAIL === "false") {
+            console.log("📧 Email send configuration is set to false", text);
+            return;
+        }
         const response = await gmail.users.messages.send({
             userId: "me",
             requestBody: {

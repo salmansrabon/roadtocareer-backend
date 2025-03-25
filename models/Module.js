@@ -1,6 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/db");
-const Package = require("./Package"); // Import Package model
+const Package = require("./Package");
 
 const Module = sequelize.define("Module", {
     id: {

@@ -102,22 +102,41 @@ exports.getCourseDetails = async (req, res) => {
 
 exports.getCoursesList = async (req, res) => {
     try {
+        const { is_enabled } = req.query;
+
+        const condition = {};
+        if (is_enabled === "true") {
+            condition.is_enabled = true;
+        } else if (is_enabled === "false") {
+            condition.is_enabled = false;
+        }
+
         const courses = await Course.findAll({
-            attributes: ["courseId", "batch_no", "course_title","drive_folder_id", "short_description", "is_enabled", "enrollment_start_date","enrollment_end_date","orientation_date","class_start_date","class_time","course_image"], // ✅ Select only required fields
+            where: Object.keys(condition).length ? condition : undefined,
+            attributes: [
+                "courseId", "batch_no", "course_title", "drive_folder_id",
+                "short_description", "is_enabled", "enrollment_start_date",
+                "enrollment_end_date", "orientation_date", "class_start_date",
+                "class_time", "course_image"
+            ],
             include: [
                 {
                     model: Package,
-                    attributes: ["id", "packageName", "studentFee", "jobholderFee"], // ✅ Get package details
+                    attributes: ["id", "packageName", "studentFee", "jobholderFee"]
                 }
             ]
         });
 
-        res.status(200).json({ courses });
+        res.status(200).json({
+            count: courses.length,
+            courses
+        });
     } catch (error) {
         console.error("Error fetching courses:", error);
         res.status(500).json({ message: "Internal server error" });
     }
-}
+};
+
 exports.updateCourse = async (req, res) => {
     try {
         const { courseId } = req.params;

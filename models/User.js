@@ -39,8 +39,8 @@ const User = sequelize.define("User", {
         allowNull: true
     },
 }, {
-    tableName: "users", // Ensure it matches your database table
-    timestamps: false   // Disable createdAt & updatedAt if they don't exist in DB
+    tableName: "users",
+    timestamps: false
 });
 
 module.exports = User;

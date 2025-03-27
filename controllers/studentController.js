@@ -592,61 +592,100 @@ exports.getAttendance = async (req, res) => {
             return res.status(404).json({ message: "No attendance record found for this student." });
         }
 
-        // ✅ Parse `attendanceList` if stored as a String
-        let parsedAttendanceList;
+        // ✅ Parse `attendanceList` safely for calculation
+        let parsedAttendanceList = [];
         try {
-            parsedAttendanceList = typeof attendance.attendanceList === "string"
-                ? JSON.parse(attendance.attendanceList)
-                : attendance.attendanceList;
+            const raw = attendance.attendanceList;
+
+            if (typeof raw === "string") {
+                parsedAttendanceList = JSON.parse(raw);
+
+                // Handle possible double-stringified JSON
+                if (typeof parsedAttendanceList === "string") {
+                    parsedAttendanceList = JSON.parse(parsedAttendanceList);
+                }
+            } else if (Array.isArray(raw)) {
+                parsedAttendanceList = raw;
+            }
+
+            if (!Array.isArray(parsedAttendanceList)) {
+                parsedAttendanceList = [];
+            }
+
         } catch (error) {
+            console.warn(`⚠️ Failed to parse attendanceList for ${studentId}:`, error.message);
             return res.status(400).json({ message: "Error parsing attendance data!" });
         }
 
-        // ✅ Construct Response
-        const response = {
+        // ✅ Construct and send response
+        const total = parsedAttendanceList.length;
+        const percentage = ((total / 30) * 100).toFixed(2) + "%";
+
+        return res.status(200).json({
             studentId: attendance.StudentId,
             studentName: attendance.student_name,
             courseId: attendance.courseId,
             courseTitle: attendance.courseTitle,
             batch_no: attendance.batch_no,
-            attendanceList: parsedAttendanceList, // ✅ Proper JSON format
-            totalClicks: parsedAttendanceList.length,
-            attendancePercentage: `${((parsedAttendanceList.length / 30) * 100).toFixed(2)}%`
-        };
-
-        return res.status(200).json(response);
+            attendanceList: attendance.attendanceList, // ✅ Keep raw string format in response
+            totalClicks: total,
+            attendancePercentage: percentage
+        });
 
     } catch (error) {
-        console.error("Error fetching attendance:", error);
+        console.error("❌ Error fetching attendance:", error);
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };
+
 exports.getAllAttendance = async (req, res) => {
     try {
-        // ✅ Extract Query Parameters for Filtering & Pagination
         const { courseId, batch_no, student_name, limit = 10, offset = 0 } = req.query;
 
-        // ✅ Create Filter Conditions
         const whereCondition = {};
         if (courseId) whereCondition.courseId = courseId;
         if (batch_no) whereCondition.batch_no = batch_no;
-        if (student_name) whereCondition.student_name = { [Op.like]: `%${student_name}%` }; // ✅ Partial match search
+        if (student_name) whereCondition.student_name = { [Op.like]: `%${student_name}%` };
 
         const totalRecords = await Attendance.count({ where: whereCondition });
 
-        // ✅ Fetch Attendance Records with Pagination & Filters
         const attendanceRecords = await Attendance.findAll({
-            where: whereCondition, // ✅ Apply filters
+            where: whereCondition,
             attributes: ["courseId", "courseTitle", "batch_no", "StudentId", "student_name", "attendanceList"],
-            order: [["createdAt", "DESC"]], // ✅ Order by latest attendance
-            limit: parseInt(limit), // ✅ Limit number of records
-            offset: parseInt(offset) // ✅ Skip records for pagination
+            order: [["createdAt", "DESC"]],
+            limit: parseInt(limit),
+            offset: parseInt(offset)
         });
 
         const formattedAttendanceRecords = attendanceRecords.map(record => {
-            const parsedAttendanceList = Array.isArray(record.attendanceList)
-                ? record.attendanceList
-                : JSON.parse(record.attendanceList || "[]");
+            let parsedAttendanceList = [];
+
+            try {
+                // ✅ Step 1: Parse only to count
+                const raw = record.attendanceList;
+
+                if (typeof raw === "string") {
+                    parsedAttendanceList = JSON.parse(raw);
+
+                    // Handle double-stringified edge case
+                    if (typeof parsedAttendanceList === "string") {
+                        parsedAttendanceList = JSON.parse(parsedAttendanceList);
+                    }
+                } else if (Array.isArray(raw)) {
+                    parsedAttendanceList = raw;
+                }
+
+                if (!Array.isArray(parsedAttendanceList)) {
+                    parsedAttendanceList = [];
+                }
+
+            } catch (err) {
+                console.warn(`⚠️ Could not parse attendanceList for ${record.StudentId}:`, err.message);
+                parsedAttendanceList = [];
+            }
+
+            const total = parsedAttendanceList.length;
+            const percentage = ((total / 30) * 100).toFixed(2) + "%";
 
             return {
                 courseId: record.courseId,
@@ -654,25 +693,26 @@ exports.getAllAttendance = async (req, res) => {
                 batch_no: record.batch_no,
                 StudentId: record.StudentId,
                 student_name: record.student_name,
-                attendanceList: parsedAttendanceList, // ✅ Use parsed list
-                totalClicks: parsedAttendanceList.length,
-                attendancePercentage: ((parsedAttendanceList.length / 30) * 100).toFixed(2) + "%"
+                attendanceList: record.attendanceList, // ✅ Keep as string in response
+                totalClicks: total,
+                attendancePercentage: percentage
             };
         });
 
         return res.status(200).json({
             success: true,
-            totalRecords, // ✅ Total number of filtered students
-            totalPages: Math.ceil(totalRecords / limit), // ✅ Calculate total pages
-            currentPage: Math.floor(offset / limit) + 1, // ✅ Calculate current page
+            totalRecords,
+            totalPages: Math.ceil(totalRecords / limit),
+            currentPage: Math.floor(offset / limit) + 1,
             attendanceRecords: formattedAttendanceRecords
         });
 
     } catch (error) {
-        console.error("Error fetching attendance records:", error);
+        console.error("❌ Error fetching attendance records:", error);
         return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+
 
 
 

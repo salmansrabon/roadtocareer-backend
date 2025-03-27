@@ -36,8 +36,6 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/mcq", mcqRoutes);
 app.use("/api/mcq-config", mcqConfigRoutes);
 
-
-
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`),

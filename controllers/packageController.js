@@ -30,7 +30,13 @@ exports.createPackage = async (req, res) => {
 // 🔹 GET: List all packages
 exports.getAllPackages = async (req, res) => {
     try {
-        const packages = await Package.findAll();
+        const packages = await Package.findAll({
+            include: {
+                model: Course,
+                attributes: ["batch_no", "is_enabled"]
+            }
+        });
+
         res.status(200).json({ success: true, packages });
     } catch (err) {
         console.error("Error fetching packages:", err);

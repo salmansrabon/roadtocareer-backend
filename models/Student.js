@@ -120,7 +120,8 @@ const Student = sequelize.define("Student", {
         type: DataTypes.INTEGER
     },
     quiz_answer: {
-        type: DataTypes.JSON
+        type: DataTypes.TEXT('long'),
+        allowNull: true
     }
 }, {
     tableName: "students",

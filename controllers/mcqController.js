@@ -74,6 +74,37 @@ exports.updateMCQ = async (req, res) => {
     }
 };
 
+//delete mcq
+exports.deleteMCQ = async (req, res) => {
+    try {
+        const { mcq_id } = req.params;
+
+        // ✅ Check if MCQ exists
+        const mcq = await MCQ.findByPk(mcq_id);
+        if (!mcq) {
+            return res.status(404).json({
+                success: false,
+                message: "MCQ not found."
+            });
+        }
+
+        // ✅ Delete the MCQ
+        await mcq.destroy();
+
+        return res.status(200).json({
+            success: true,
+            message: "MCQ deleted successfully.",
+            deletedMcqId: mcq_id
+        });
+
+    } catch (error) {
+        console.error("❌ Error deleting MCQ:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
+    }
+};
 
 
 // ✅ API to Fetch a Unique Random MCQ
@@ -160,46 +191,50 @@ exports.validateMCQAnswer = async (req, res) => {
             return res.status(400).json({ message: "Missing required fields: CourseId, mcq_id, StudentId, or user_answer." });
         }
 
-        // ✅ Fetch the MCQ by ID and Course ID
+        // ✅ Fetch the MCQ
         const mcq = await MCQ.findOne({ where: { id: mcq_id, CourseId } });
-
         if (!mcq) {
             return res.status(404).json({ message: "MCQ not found." });
         }
 
-        // ✅ Ensure mcq_question is parsed properly
+        // ✅ Parse mcq_question
         let mcqQuestion;
         try {
             mcqQuestion = typeof mcq.mcq_question === "string"
                 ? JSON.parse(mcq.mcq_question)
                 : mcq.mcq_question;
         } catch (error) {
-            console.error("Error parsing mcq_question:", error);
+            console.error("❌ Error parsing mcq_question:", error);
             return res.status(500).json({ message: "Invalid JSON format in MCQ data." });
         }
 
-        // ✅ Check if the answer is correct
+        // ✅ Validate answer
         const isCorrect = mcqQuestion.correct_answer === user_answer;
 
-        // ✅ Fetch Student Record
+        // ✅ Fetch student
         const student = await Student.findOne({ where: { StudentId } });
-
         if (!student) {
             return res.status(404).json({ message: "Student not found." });
         }
 
-        // ✅ Ensure quiz_answer column is stored in JSON format
-        let quizHistory;
+        // ✅ Parse quiz_answer safely
+        let quizHistory = [];
         try {
-            quizHistory = typeof student.quiz_answer === "string"
-                ? JSON.parse(student.quiz_answer)
-                : student.quiz_answer || [];
+            const raw = student.quiz_answer;
+            if (typeof raw === "string") {
+                quizHistory = JSON.parse(raw);
+                if (!Array.isArray(quizHistory)) {
+                    quizHistory = [];
+                }
+            } else if (Array.isArray(raw)) {
+                quizHistory = raw;
+            }
         } catch (error) {
-            console.error("Error parsing quiz_answer:", error);
-            quizHistory = []; // ✅ Default to an empty array if parsing fails
+            console.warn(`⚠️ Failed to parse quiz_answer for ${StudentId}:`, error.message);
+            quizHistory = [];
         }
 
-        // ✅ Add the new quiz attempt
+        // ✅ Push current quiz attempt
         quizHistory.push({
             mcq_id,
             question: mcqQuestion.question_title,
@@ -209,21 +244,23 @@ exports.validateMCQAnswer = async (req, res) => {
             attempted_at: new Date().toISOString()
         });
 
-        // ✅ Update Student's quiz_answer column
-        await student.update({ quiz_answer: JSON.stringify(quizHistory) });
+        // ✅ Update the student's quiz_answer as string
+        const updatedAnswer = JSON.stringify(quizHistory);
+        await student.update({ quiz_answer: updatedAnswer });
 
         return res.status(200).json({
-            isCorrect: isCorrect,
+            isCorrect,
             status: isCorrect ? "Correct answer!" : "Wrong answer!",
             StudentId,
             score: isCorrect ? 1 : 0
         });
 
     } catch (error) {
-        console.error("Error validating MCQ answer:", error);
+        console.error("❌ Error validating MCQ answer:", error);
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };
+
 exports.getStudentResult = async (req, res) => {
     try {
         const { studentId } = req.params;

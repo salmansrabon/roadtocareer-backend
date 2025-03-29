@@ -122,7 +122,7 @@ exports.getCoursesList = async (req, res) => {
             include: [
                 {
                     model: Package,
-                    attributes: ["id", "packageName", "studentFee", "jobholderFee"]
+                    attributes: ["id", "packageName", "studentFee", "jobholderFee", "installment"]
                 }
             ]
         });

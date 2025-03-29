@@ -3,7 +3,7 @@ const Course = require("../models/Course");
 const Package = require("../models/Package");
 const User = require("../models/User");
 const Attendance = require("../models/Attendance");
-const axios = require("axios");
+const bcrypt = require("bcryptjs");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
 const { sendEmail } = require("../utils/emailHelper");
@@ -129,26 +129,27 @@ exports.studentSignup = async (req, res) => {
 
         // ✅ Create User in `users` Table
         try {
-            const userPayload = {
-                username: studentId, // ✅ Unique username from studentId
+            const hashedPassword = await bcrypt.hash(password, 10);
+            await User.create({
+                username: studentId,
                 email,
-                password,
-                role: "student"
-            };
-            const userResponse = await axios.post("http://localhost:5000/api/auth/register", userPayload);
-
-            if (userResponse.status !== 201) {
-                throw new Error("Error creating user in users table.");
-            }
+                password: hashedPassword,
+                role: "student",
+                isValid: false, // Initially set to false,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            });
+            console.log("✅ User created successfully.");
         } catch (userError) {
-            console.error("Error creating user:", userError);
+            console.error("❌ Error creating user in DB:", userError);
             return res.status(500).json({ message: "Failed to create user. Please contact admin." });
         }
 
+
         try {
-            const formattedClassDays = Array.isArray(course.class_days) 
-            ? course.class_days.join(", ") 
-            : course.class_days.replace(/[\[\]"]/g, "");
+            const formattedClassDays = Array.isArray(course.class_days)
+                ? course.class_days.join(", ")
+                : course.class_days.replace(/[\[\]"]/g, "");
             const studentEmailBody = `
                 Dear ${student_name},
 
@@ -214,7 +215,7 @@ exports.studentSignup = async (req, res) => {
             generatedPassword: password,
             studentDetails: newStudent
         });
-        
+
 
     } catch (error) {
         console.error("Error in student signup:", error);

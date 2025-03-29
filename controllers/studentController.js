@@ -49,6 +49,7 @@ const generatePassword = () => {
 exports.studentSignup = async (req, res) => {
     try {
         const {
+            salutation,
             student_name,
             email,
             mobile,
@@ -99,6 +100,7 @@ exports.studentSignup = async (req, res) => {
 
         // ✅ Insert Student Data into `students` Table
         const newStudent = await Student.create({
+            salutation:salutation,
             StudentId: studentId,
             CourseId: courseId,
             package: package_name,

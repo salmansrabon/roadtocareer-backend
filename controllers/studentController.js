@@ -716,7 +716,51 @@ exports.getAllAttendance = async (req, res) => {
     }
 };
 
+exports.migrateStudent = async (req, res) => {
+    const { studentId } = req.params;
+    const { CourseId, batch_no, remark } = req.body;
 
+    if (!batch_no) {
+        return res.status(400).json({ message: "batch_no is required." });
+    }
+
+    try {
+        const student = await Student.findOne({ where: { studentId } });
+
+        if (!student) {
+            return res.status(404).json({ message: `No student found with ID: ${studentId}` });
+        }
+
+        const oldBatch = student.batch_no;
+
+        // ✅ Update quiz_answer and remark
+        await Student.update(
+            {
+                quiz_answer: null,
+                remark: remark || `Migrated from batch ${oldBatch} to ${batch_no}`,
+                CourseId, // ✅ Update courseId as well
+                batch_no // ✅ Update new batch as well
+            },
+            { where: { studentId } }
+        );
+
+        // ✅ Reset attendance list
+        await Attendance.update(
+            { attendanceList: null },
+            { where: { studentId } }
+        );
+
+        return res.status(200).json({
+            message: `✅ Attendance and quiz answer reset for ${studentId}`,
+            updatedCourse: CourseId,
+            updatedBatch: batch_no
+        });
+
+    } catch (error) {
+        console.error("❌ Error resetting student data:", error);
+        return res.status(500).json({ message: "Internal server error." });
+    }
+};
 
 
 

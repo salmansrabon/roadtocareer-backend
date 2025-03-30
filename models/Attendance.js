@@ -39,8 +39,8 @@ const Attendance = sequelize.define("Attendance", {
         allowNull: false
     },
     attendanceList: {
-        type: DataTypes.JSON, // ✅ Stores JSON format
-        defaultValue: [] // ✅ Default empty array
+        type: DataTypes.TEXT('long'), // ✅ Stores JSON format
+        allowNull: true,
     }
 }, {
     tableName: "attendance",

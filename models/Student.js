@@ -1,5 +1,5 @@
 const { DataTypes } = require("sequelize");
-const sequelize = require("../config/db"); // Import Sequelize instance
+const sequelize = require("../config/db");
 const User = require("./User");
 const Course = require("./Course");
 const Package = require("./Package");

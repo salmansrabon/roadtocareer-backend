@@ -289,6 +289,24 @@ exports.getUnpaidStudents = async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+exports.deletePaymentById = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const payment = await Payment.findByPk(id);
+
+        if (!payment) {
+            return res.status(404).json({ message: "Payment not found" });
+        }
+
+        await payment.destroy();
+
+        return res.status(200).json({ message: "Payment deleted successfully" });
+    } catch (error) {
+        console.error("❌ Error deleting payment:", error);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+};
 
 
 

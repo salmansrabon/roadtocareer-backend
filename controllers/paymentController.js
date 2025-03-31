@@ -123,7 +123,7 @@ exports.getPaymentHistory = async (req, res) => {
  */
 exports.getPaymentsList = async (req, res) => {
     try {
-        const { studentId, courseId, month, page = 1, limit = 10 } = req.query;
+        const { studentId, name, courseId, month, page = 1, limit = 10 } = req.query;
 
         const pageNumber = parseInt(page) || 1;
         const limitNumber = parseInt(limit) || 10;
@@ -131,6 +131,7 @@ exports.getPaymentsList = async (req, res) => {
 
         let whereClause = {};
         if (studentId) whereClause.studentId = studentId;
+        if (name) whereClause.studentName = { [Op.like]: `%${name}%` };
         if (courseId) whereClause.courseId = courseId;
         if (month) whereClause.month = { [Op.like]: `%${month}%` };
 

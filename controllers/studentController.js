@@ -147,6 +147,14 @@ exports.studentSignup = async (req, res) => {
             return res.status(500).json({ message: "Failed to create user. Please contact admin." });
         }
 
+        function formatTime(time24) {
+            const [hourStr, minute] = time24.split(':');
+            let hours = parseInt(hourStr, 10);
+            const period = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12 || 12; // convert "0" to "12" for midnight
+            return `${hours}:${minute} ${period}`;
+          }
+          
 
         try {
             const formattedClassDays = Array.isArray(course.class_days)
@@ -164,7 +172,7 @@ exports.studentSignup = async (req, res) => {
                 Orientation Date: ${course.orientation_date}
                 Class Start Date: ${course.class_start_date}
                 Class Days: ${formattedClassDays}
-                Class Time: ${course.class_time}
+                Class Time: ${formatTime(course.class_time)}
 
                 Thank you for joining!
 

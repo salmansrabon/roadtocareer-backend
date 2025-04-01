@@ -77,7 +77,7 @@ async function seedStudent(studentData) {
 
 
 async function runSeeders() {
-    if (process.env.NODE_ENV === "prod") {
+    if (process.env.NODE_ENV === "production") {
         console.log("Skipping seed data insertion in production environment.");
         return;
     }
@@ -159,8 +159,8 @@ async function runSeeders() {
             batch_no: "15",
             courseTitle: "Full-Stack SQA",
             salutation: "Mr",
-            student_name: "Tanvir Ahmed",
-            university: "Dhaka International University",
+            student_name: "Salman Rahman",
+            university: "Seed University",
             profession: "Job Holder",
             passingYear: "2022",
             experience: "",

@@ -47,6 +47,14 @@ const Payment = sequelize.define("Payment", {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false
     },
+    dueAdjustmentType: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    dueAdjustmentAmount: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true
+    },
     remainingBalance: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false

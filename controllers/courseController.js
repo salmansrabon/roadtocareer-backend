@@ -116,7 +116,7 @@ exports.getCoursesList = async (req, res) => {
             attributes: [
                 "courseId", "batch_no", "course_title", "drive_folder_id",
                 "short_description", "is_enabled", "enrollment_start_date",
-                "enrollment_end_date", "orientation_date", "class_start_date",
+                "enrollment_end_date", "orientation_date", "class_start_date", "class_days",
                 "class_time", "course_image"
             ],
             include: [

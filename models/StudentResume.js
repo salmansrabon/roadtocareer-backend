@@ -114,6 +114,29 @@ const StudentResume = sequelize.define("StudentResume", {
             this.setDataValue("trainingInfo", JSON.stringify(value));
         }
     },
+    primarySkill: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        get() {
+            const raw = this.getDataValue("primarySkill");
+            return raw ? raw.split(",") : [];
+        },
+        set(value) {
+            this.setDataValue("primarySkill", Array.isArray(value) ? value.join(",") : value);
+        }
+    },
+    secondarySkill: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        get() {
+            const raw = this.getDataValue("secondarySkill");
+            return raw ? raw.split(",") : [];
+        },
+        set(value) {
+            this.setDataValue("secondarySkill", Array.isArray(value) ? value.join(",") : value);
+        }
+    },
+
     resumeFile: {
         type: DataTypes.STRING,
         allowNull: true

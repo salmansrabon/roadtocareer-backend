@@ -57,6 +57,8 @@ exports.createResume = async (req, res) => {
             personalProjects,
             academicInfo,
             trainingInfo,
+            primarySkill,
+            secondarySkill,
             resumeFile,
             photo
         } = req.body;
@@ -92,6 +94,8 @@ exports.createResume = async (req, res) => {
             personalProjects: personalProjects,
             academicInfo: academicInfo,
             trainingInfo: trainingInfo,
+            primarySkill,
+            secondarySkill,
             resumeFile: resumeFile || null,
             photo: photo || null
         });
@@ -144,6 +148,8 @@ exports.updateResume = async (req, res) => {
             "personalProjects",
             "academicInfo",
             "trainingInfo",
+            "primarySkill",
+            "secondarySkill",
             "resumeFile",
             "photo"
         ];

@@ -3,3 +3,4 @@ node_modules
 config/gdrive-service-account.json
 config/gmail-service-account.json
 images
+uploads

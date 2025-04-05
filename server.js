@@ -17,6 +17,8 @@ const imageRoutes = require("./routes/imageRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const mcqRoutes = require("./routes/mcqRoutes");
 const mcqConfigRoutes = require("./routes/mcqConfigRoutes");
+const resumeRoutes = require("./routes/resumeRoutes");
+const fileRoutes  = require("./routes/fileRoutes");
 
 const app = express();
 app.use(cors());
@@ -32,9 +34,11 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/teams", teamRoutes);
 app.use("/images", express.static(path.join(__dirname, "images")));
 app.use("/api/images", imageRoutes);
+app.use("/api/file", fileRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/mcq", mcqRoutes);
 app.use("/api/mcq-config", mcqConfigRoutes);
+app.use("/api/resume", resumeRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {

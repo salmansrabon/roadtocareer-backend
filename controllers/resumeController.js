@@ -1,5 +1,6 @@
 const StudentResume = require("../models/StudentResume");
 const Student = require("../models/Student");
+const sequelize = require("../config/db");
 
 exports.getAllResumes = async (req, res) => {
     try {
@@ -45,6 +46,7 @@ exports.getAllResumes = async (req, res) => {
 exports.createResume = async (req, res) => {
     try {
         const {
+            careerObjective,
             studentId,
             fullName,
             email,
@@ -59,11 +61,13 @@ exports.createResume = async (req, res) => {
             trainingInfo,
             primarySkill,
             secondarySkill,
+            reference,
             resumeFile,
-            photo
+            photo,
+            
         } = req.body;
 
-        // 🔹 Check if the student exists
+        // Check if student exists
         const student = await Student.findOne({ where: { StudentId: studentId } });
         if (!student) {
             return res.status(404).json({
@@ -72,16 +76,11 @@ exports.createResume = async (req, res) => {
             });
         }
 
-        // 🔹 Check for existing resume entry
+        // Check if resume exists
         const existingResume = await StudentResume.findOne({ where: { studentId } });
-        if (existingResume) {
-            return res.status(409).json({
-                success: false,
-                message: "Resume already exists."
-            });
-        }
-        // Create resume record
-        const newResume = await StudentResume.create({
+
+        const resumePayload = {
+            careerObjective,
             studentId,
             fullName,
             email,
@@ -89,18 +88,29 @@ exports.createResume = async (req, res) => {
             linkedin,
             github,
             jobStatus,
-            jobHistory: jobHistory,
-            skillSet: skillSet,
-            personalProjects: personalProjects,
-            academicInfo: academicInfo,
-            trainingInfo: trainingInfo,
+            jobHistory,
+            skillSet,
+            personalProjects,
+            academicInfo,
+            trainingInfo,
             primarySkill,
             secondarySkill,
+            reference,
             resumeFile: resumeFile || null,
             photo: photo || null
-        });
+        };
 
-        res.status(201).json({
+        if (existingResume) {
+            await StudentResume.update(resumePayload, { where: { studentId } });
+            return res.status(200).json({
+                success: true,
+                message: "Resume updated successfully.",
+                resume: resumePayload
+            });
+        }
+
+        const newResume = await StudentResume.create(resumePayload);
+        return res.status(201).json({
             success: true,
             message: "Resume created successfully.",
             resume: newResume
@@ -108,9 +118,10 @@ exports.createResume = async (req, res) => {
 
     } catch (error) {
         console.error("❌ Error in createResume:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+
 
 
 exports.updateResume = async (req, res) => {
@@ -212,5 +223,102 @@ exports.deleteResume = async (req, res) => {
         });
     }
 };
+
+
+exports.getAllStudentResumes = async (req, res) => {
+    const {
+      studentName,
+      studentId,
+      email,
+      batch_no,
+      companyName,
+      primarySkill,
+      secondarySkill,
+      page = 1,
+      limit = 10
+    } = req.query;
+  
+    try {
+      const whereClauses = [];
+      const replacements = {
+        studentName: `%${studentName || ''}%`,
+        studentId,
+        email,
+        batch_no,
+        companyName: `%${companyName || ''}%`,
+        primarySkill: `%${primarySkill || ''}%`,
+        secondarySkill: `%${secondarySkill || ''}%`,
+        limit: parseInt(limit),
+        offset: (parseInt(page) - 1) * parseInt(limit)
+      };
+  
+      if (studentName) whereClauses.push(`s.student_name LIKE :studentName`);
+      if (studentId) whereClauses.push(`s.StudentId = :studentId`);
+      if (email) whereClauses.push(`s.email = :email`);
+      if (batch_no) whereClauses.push(`s.batch_no = :batch_no`);
+      if (companyName) whereClauses.push(`s.company LIKE :companyName`);
+      if (primarySkill) whereClauses.push(`sr.primarySkill LIKE :primarySkill`);
+      if (secondarySkill) whereClauses.push(`sr.secondarySkill LIKE :secondarySkill`);
+  
+      const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+  
+      const results = await sequelize.query(
+        `
+        SELECT 
+          s.StudentId, 
+          s.salutation,
+          s.student_name,
+          s.batch_no,
+          s.email,
+          s.university,
+          s.company,
+          s.designation,
+          sr.primarySkill,
+          sr.secondarySkill,
+          s.linkedin,
+          sr.resumeFile
+        FROM students s
+        LEFT JOIN student_resumes sr ON s.StudentId = sr.studentId
+        ${whereSql}
+        ORDER BY s.createdAt DESC
+        LIMIT :limit OFFSET :offset
+        `,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      );
+  
+      const countResult = await sequelize.query(
+        `
+        SELECT COUNT(*) as total
+        FROM students s
+        LEFT JOIN student_resumes sr ON s.StudentId = sr.studentId
+        ${whereSql}
+        `,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      );
+  
+      const total = countResult[0]?.total || 0;
+      const totalPages = Math.ceil(total / parseInt(limit));
+  
+      res.status(200).json({
+        success: true,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages,
+        data: results,
+      });
+    } catch (error) {
+      console.error("Error fetching student resumes:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  };
+  
+
 
 

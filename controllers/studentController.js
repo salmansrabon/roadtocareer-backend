@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
 const { sendEmail } = require("../utils/emailHelper");
+const sequelize = require("../config/db");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -769,6 +770,44 @@ exports.migrateStudent = async (req, res) => {
         return res.status(500).json({ message: "Internal server error." });
     }
 };
+
+exports.getAllCompanies = async (req, res) => {
+  const { search = "", limit } = req.query;
+
+  try {
+    let query = `
+      SELECT DISTINCT s.company
+      FROM students s
+      WHERE s.company IS NOT NULL AND TRIM(s.company) != ''
+    `;
+
+    const replacements = {};
+
+    // If search is passed → filter by it and force limit to 10
+    if (search) {
+      query += ` AND s.company LIKE :search ORDER BY s.company ASC LIMIT 10`;
+      replacements.search = `%${search}%`;
+    } else if (limit) {
+      query += ` ORDER BY s.company ASC LIMIT :limit`;
+      replacements.limit = parseInt(limit);
+    } else {
+      query += ` ORDER BY s.company ASC`; // all results, ordered
+    }
+
+    const [results] = await sequelize.query(query, { replacements });
+    const companies = results.map((row) => row.company);
+
+    res.status(200).json({
+      success: true,
+      count: companies.length,
+      data: companies,
+    });
+  } catch (error) {
+    console.error("Error fetching company list:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
 
 
 

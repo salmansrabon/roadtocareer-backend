@@ -279,7 +279,7 @@ exports.getAllStudentResumes = async (req, res) => {
           sr.primarySkill,
           sr.secondarySkill,
           sr.jobStatus,
-          s.linkedin,
+          sr.linkedin,
           sr.resumeFile
         FROM students s
         LEFT JOIN student_resumes sr ON s.StudentId = sr.studentId

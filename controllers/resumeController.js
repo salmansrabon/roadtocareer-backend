@@ -234,6 +234,7 @@ exports.getAllStudentResumes = async (req, res) => {
       companyName,
       primarySkill,
       secondarySkill,
+      jobStatus,
       page = 1,
       limit = 10
     } = req.query;
@@ -248,6 +249,7 @@ exports.getAllStudentResumes = async (req, res) => {
         companyName: `%${companyName || ''}%`,
         primarySkill: `%${primarySkill || ''}%`,
         secondarySkill: `%${secondarySkill || ''}%`,
+        jobStatus,
         limit: parseInt(limit),
         offset: (parseInt(page) - 1) * parseInt(limit)
       };
@@ -259,6 +261,7 @@ exports.getAllStudentResumes = async (req, res) => {
       if (companyName) whereClauses.push(`s.company LIKE :companyName`);
       if (primarySkill) whereClauses.push(`sr.primarySkill LIKE :primarySkill`);
       if (secondarySkill) whereClauses.push(`sr.secondarySkill LIKE :secondarySkill`);
+      if (jobStatus) whereClauses.push(`sr.jobStatus = :jobStatus`);
   
       const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
   
@@ -275,12 +278,13 @@ exports.getAllStudentResumes = async (req, res) => {
           s.designation,
           sr.primarySkill,
           sr.secondarySkill,
+          sr.jobStatus,
           s.linkedin,
           sr.resumeFile
         FROM students s
         LEFT JOIN student_resumes sr ON s.StudentId = sr.studentId
         ${whereSql}
-        ORDER BY s.createdAt DESC
+        ORDER BY sr.updatedAt DESC
         LIMIT :limit OFFSET :offset
         `,
         {

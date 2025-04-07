@@ -4,6 +4,7 @@ const Student = require("../models/Student");
 const Course = require("../models/Course");
 const { Op, Sequelize } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
+Payment.belongsTo(Student, { foreignKey: "studentId", targetKey: "StudentId" });
 
 exports.addPayment = async (req, res) => {
     try {
@@ -170,10 +171,8 @@ exports.getPaymentsList = async (req, res) => {
         if (month) whereClause.month = { [Op.like]: `%${month}%` };
         if (dueAdjustmentType) whereClause.dueAdjustmentType = dueAdjustmentType;
 
-        // ✅ Count total matching payments (unaffected by pagination)
         const totalPayments = await Payment.count({ where: whereClause });
 
-        // ✅ Calculate total paid amount from all matching payments
         const allMatchingPayments = await Payment.findAll({
             where: whereClause,
             attributes: ["paidAmount"]
@@ -181,7 +180,6 @@ exports.getPaymentsList = async (req, res) => {
 
         const totalPaidAmount = allMatchingPayments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0);
 
-        // ✅ Fetch paginated payments
         const payments = await Payment.findAll({
             where: whereClause,
             attributes: [
@@ -199,9 +197,26 @@ exports.getPaymentsList = async (req, res) => {
                 "paymentDateTime",
                 "createdAt",
             ],
+            include: [
+                {
+                    model: Student,
+                    attributes: ["email"],
+                }
+            ],
             order: [["paymentDateTime", "DESC"]],
             offset,
             limit: limitNumber,
+        });
+
+        // Optional: Flatten the email into each payment object
+        const responsePayments = payments.map(payment => {
+            const plain = payment.toJSON();
+            const email = plain.Student?.email || null;
+            delete plain.Student; // ❌ Remove nested Student object
+            return {
+                ...plain,
+                email // ✅ Add email at root level
+            };
         });
 
         return res.status(200).json({
@@ -209,7 +224,7 @@ exports.getPaymentsList = async (req, res) => {
             totalPages: Math.ceil(totalPayments / limitNumber),
             currentPage: pageNumber,
             totalPaidAmount,
-            payments
+            payments: responsePayments
         });
 
     } catch (error) {
@@ -217,6 +232,7 @@ exports.getPaymentsList = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 
 exports.getStudentPayments = async (req, res) => {

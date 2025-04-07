@@ -2,7 +2,7 @@ const Payment = require("../models/Payment");
 const Package = require("../models/Package");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
-const { Op } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
 
 exports.addPayment = async (req, res) => {
@@ -260,73 +260,76 @@ exports.getUnpaidStudents = async (req, res) => {
     try {
         const { courseId, month, batch_no, limit = 10, offset = 0 } = req.query;
 
-        // ✅ Build Where Clause for Filtering
-        let whereClause = {};
-        if (courseId) whereClause.CourseId = courseId;
-        if (batch_no) whereClause.batch_no = batch_no; // ✅ Filter by batch_no
+        // 🔍 Base filter for enrolled students
+        let studentFilter = {
+            isEnrolled: true,
+        };
+        if (courseId) studentFilter.CourseId = courseId;
+        if (batch_no) studentFilter.batch_no = batch_no;
 
-        // ✅ Fetch All Students for the Given Course & Batch
-        const allStudents = await Student.findAll({
-            where: whereClause,
+        // 🔍 Build dynamic where clause for payment match
+        let paymentWhere = {};
+        if (courseId) paymentWhere.courseId = courseId;
+        if (month) paymentWhere.month = month;
+
+        // 🔍 Find all studentIds who HAVE paid (to exclude them)
+        const paidStudentRows = await Payment.findAll({
+            attributes: ['studentId'],
+            where: paymentWhere,
+            raw: true,
+        });
+        const paidStudentIds = paidStudentRows.map(row => row.studentId);
+
+        // 🔍 Final unpaid students list
+        const unpaidStudents = await Student.findAll({
+            where: {
+                ...studentFilter,
+                StudentId: {
+                    [Op.notIn]: paidStudentIds
+                }
+            },
             attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email"],
             include: [
                 {
                     model: Course,
                     attributes: ["course_title", "batch_no"],
                 }
-            ]
+            ],
+            limit: parseInt(limit),
+            offset: parseInt(offset)
         });
 
-        // ✅ Extract Student IDs
-        const studentIds = allStudents.map(student => student.StudentId);
-        if (studentIds.length === 0) {
-            return res.status(404).json({ success: false, message: "No students found for the given filters." });
-        }
-
-        // ✅ Fetch Paid Students (Only if Month is Provided)
-        let paidStudentsQuery = { studentId: studentIds };
-        if (month) paidStudentsQuery.month = month; // ✅ Filter by Month if provided
-
-        const paidStudents = await Payment.findAll({
-            where: paidStudentsQuery,
-            attributes: ["studentId"],
-            group: ["studentId"], // ✅ Ensure unique students
+        // 🔢 Get total count
+        const totalUnpaid = await Student.count({
+            where: {
+                ...studentFilter,
+                StudentId: {
+                    [Op.notIn]: paidStudentIds
+                }
+            }
         });
 
-        // ✅ Convert Paid Student IDs to a Set
-        const paidStudentIds = new Set(paidStudents.map(p => p.studentId));
-
-        // ✅ Filter Unpaid Students
-        const unpaidStudents = allStudents
-            .filter(student => !paidStudentIds.has(student.StudentId))
-            .map(student => ({
-                studentId: student.StudentId,
-                student_name: student.student_name,
-                courseId: student.CourseId,
-                courseTitle: student.courseTitle,
-                batch_no: student.batch_no,
-                mobile: student.mobile,
-                email: student.email,
-            }));
-
-        // ✅ Pagination Metadata
-        const totalUnpaid = unpaidStudents.length;
         const totalPages = Math.ceil(totalUnpaid / limit);
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
             totalUnpaid,
             totalPages,
             limit: parseInt(limit),
             offset: parseInt(offset),
-            unpaidStudents: unpaidStudents.slice(offset, offset + parseInt(limit)), // ✅ Paginate results
+            unpaidStudents,
         });
 
     } catch (error) {
         console.error("❌ Error fetching unpaid students:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error"
+        });
     }
 };
+
+
 exports.deletePaymentById = async (req, res) => {
     const { id } = req.params;
 

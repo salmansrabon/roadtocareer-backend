@@ -111,7 +111,7 @@ async function runSeeders() {
             courseId: seedCourseData.courseId,
             packageId: null, // will set dynamically
             module: [
-                { title: "Manual Testing 1", description: "Writing test cases" },
+                { title: "Manual Testing", description: "Writing test cases" },
                 { title: "Programming", description: "Java, NodeJS, Python" },
                 { title: "API Testing", description: "API Architectures, Postman, Newman" },
                 { title: "Performance Testing", description: "JMeter, k6, Load & Stress Testing" },

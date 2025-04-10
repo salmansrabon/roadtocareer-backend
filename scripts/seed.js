@@ -83,8 +83,8 @@ async function runSeeders() {
     }
     try {
         const seedCourseData = {
-            courseId: "sdet152025",
-            batch_no: "15",
+            courseId: "sdet12022",
+            batch_no: "1",
             course_title: "Full Stack SQA",
             course_initial: "sdet",
             drive_folder_id: "abc123driveid",
@@ -111,7 +111,7 @@ async function runSeeders() {
             courseId: seedCourseData.courseId,
             packageId: null, // will set dynamically
             module: [
-                { title: "Manual Testing 1", description: "Writing test cases hurreh" },
+                { title: "Manual Testing 1", description: "Writing test cases" },
                 { title: "Programming", description: "Java, NodeJS, Python" },
                 { title: "API Testing", description: "API Architectures, Postman, Newman" },
                 { title: "Performance Testing", description: "JMeter, k6, Load & Stress Testing" },
@@ -154,9 +154,9 @@ async function runSeeders() {
         const seedStudentData = {
             id: 1,
             StudentId: "sdetsr1001",
-            CourseId: "sdet152025",
+            CourseId: "sdet12022",
             package: "Diamond",
-            batch_no: "15",
+            batch_no: "1",
             courseTitle: "Full-Stack SQA",
             salutation: "Mr",
             student_name: "Salman Rahman",

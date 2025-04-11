@@ -203,6 +203,7 @@ exports.studentSignup = async (req, res) => {
                     Student Name: ${student_name}
                     Course Title: ${course.course_title}
                     Batch No: ${course.batch_no}
+                    University: ${university}
                     Profession: ${profession}
                     Passing Year: ${passingYear}
                     

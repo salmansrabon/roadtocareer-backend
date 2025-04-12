@@ -40,7 +40,6 @@ exports.listReviews = async (req, res) => {
             ]
         });
 
-        // Also count total (without pagination)
         const totalCount = await Review.count({ where: whereClause });
 
         return res.status(200).json({

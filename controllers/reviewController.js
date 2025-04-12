@@ -23,11 +23,96 @@ exports.createReview = async (req, res) => {
 // ✅ List All Reviews
 exports.listReviews = async (req, res) => {
     try {
-        const reviews = await Review.findAll({ order: [["priority", "DESC"], ["createdAt", "DESC"]] });
+        const { isEnabled, limit = 10, offset = 0 } = req.query;
 
-        return res.status(200).json({ totalReviews: reviews.length, reviews });
+        const whereClause = {};
+        if (isEnabled === "true") {
+            whereClause.rEnable = 1;
+        }
+
+        const reviews = await Review.findAll({
+            where: whereClause,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            order: [
+                ["priority", "ASC"],
+                ["updatedAt", "DESC"]
+            ]
+        });
+
+        // Also count total (without pagination)
+        const totalCount = await Review.count({ where: whereClause });
+
+        return res.status(200).json({
+            totalReviews: totalCount,
+            reviews
+        });
+
     } catch (error) {
-        console.error("Error fetching reviews:", error);
-        return res.status(500).json({ success: false, message: "Internal server error" });
+        console.error("❌ Error fetching reviews:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};
+
+exports.updateReview = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+
+        // Check if the review exists
+        const review = await Review.findByPk(id);
+
+        if (!review) {
+            return res.status(404).json({ success: false, message: "Review not found" });
+        }
+
+        // Update the review
+        await review.update(updateData);
+
+        return res.status(200).json({
+            success: true,
+            message: "Review updated successfully",
+            review,
+        });
+
+    } catch (error) {
+        console.error("Error updating review:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+};
+exports.deleteReview = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check if the review exists
+        const review = await Review.findByPk(id);
+
+        if (!review) {
+            return res.status(404).json({
+                success: false,
+                message: "Review not found",
+            });
+        }
+
+        // Delete the review
+        await review.destroy();
+
+        return res.status(200).json({
+            success: true,
+            message: "Review deleted successfully",
+        });
+
+    } catch (error) {
+        console.error("Error deleting review:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
     }
 };

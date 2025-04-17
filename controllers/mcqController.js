@@ -450,6 +450,50 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
     }
 };
 
+exports.copyMCQQuestions = async (req, res) => {
+    const toCourseId = req.params.CourseId; // Target
+    const { CourseId: fromCourseId } = req.body; // Source
+
+    try {
+        if (!fromCourseId || !toCourseId) {
+            return res.status(400).json({ message: 'Both source and target CourseId are required.' });
+        }
+
+        if (fromCourseId === toCourseId) {
+            return res.status(400).json({ message: 'Source and target CourseId cannot be the same.' });
+        }
+
+        // 1. Get all MCQs from source
+        const sourceMcqs = await MCQ.findAll({ where: { CourseId: fromCourseId } });
+
+        if (sourceMcqs.length === 0) {
+            return res.status(404).json({ message: 'No MCQs found for the source CourseId.' });
+        }
+
+        // 2. Prepare new MCQs for insertion
+        const mcqsToInsert = sourceMcqs.map(item => ({
+            CourseId: toCourseId,
+            mcq_question: typeof item.mcq_question === 'string'
+                ? JSON.parse(item.mcq_question)
+                : item.mcq_question,
+
+            createdAt: new Date(),
+            updatedAt: new Date()
+        }));
+
+        // 3. Bulk insert into new CourseId
+        await MCQ.bulkCreate(mcqsToInsert);
+
+        res.status(200).json({
+            message: `Successfully copied ${mcqsToInsert.length} MCQ(s) from '${fromCourseId}' to '${toCourseId}'`
+        });
+    } catch (error) {
+        console.error('Error copying MCQs:', error);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+
 
 
 

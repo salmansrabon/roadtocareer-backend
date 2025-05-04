@@ -1,44 +1,77 @@
 const AssignmentAnswer = require('../models/AssignmentAnswer');
 const AssignmentQuestion = require('../models/AssignmentQuestion');
 const Student = require('../models/Student');
+const User = require('../models/User');
+const { sendEmail } = require("../utils/emailHelper");
 
 const submitAssignmentAnswer = async (req, res) => {
     const { AssignmentId, StudentId, Submission_Url, Comments } = req.body;
-
+  
     if (!AssignmentId || !StudentId) {
-        return res.status(400).json({ message: "AssignmentId and StudentId are required." });
+      return res.status(400).json({ message: "AssignmentId and StudentId are required." });
     }
-
+  
     try {
-        const existing = await AssignmentAnswer.findOne({
-            where: {
-                AssignmentId: Number(AssignmentId),
-                StudentId: StudentId
-            }
-        });
-
-        if (existing) {
-            // ✅ Update existing entry
-            await existing.update({
-                Submission_Url,
-                Comments
-            });
-            return res.status(200).json({ message: "Answer updated successfully", answer: existing });
-        } else {
-            // ✅ Create new entry
-            const newAnswer = await AssignmentAnswer.create({
-                AssignmentId,
-                StudentId,
-                Submission_Url,
-                Comments
-            });
-            return res.status(201).json({ message: "Answer submitted successfully", answer: newAnswer });
+      let answer;
+  
+      const existing = await AssignmentAnswer.findOne({
+        where: {
+          AssignmentId: Number(AssignmentId),
+          StudentId: StudentId
         }
+      });
+  
+      if (existing) {
+        await existing.update({ Submission_Url, Comments });
+        answer = existing;
+      } else {
+        answer = await AssignmentAnswer.create({ AssignmentId, StudentId, Submission_Url, Comments });
+      }
+  
+      // 🔔 Notify Admins
+      const assignment = await AssignmentQuestion.findByPk(AssignmentId, {
+        attributes: ['Assignment_Title']
+      });
+  
+      const student = await Student.findOne({
+        where: { StudentId },
+        attributes: ['student_name']
+      });
+  
+      const admins = await User.findAll({
+        where: { role: "admin" },
+        attributes: ['email']
+      });
+  
+      const subject = `Assignment Submitted - ${assignment?.Assignment_Title || 'Untitled'}`;
+      const text = `Hello Admin,
+  
+  ✅ A student has submitted an assignment.
+  
+  👤 Student: ${student?.student_name || StudentId}
+  📄 Assignment: ${assignment?.Assignment_Title || AssignmentId}
+  🔗 Submission URL: ${Submission_Url}
+  
+  Please review it from your admin dashboard.
+  
+  Regards,  
+  Road to SDET System`;
+  
+      for (const admin of admins) {
+        if (admin.email) {
+          await sendEmail(admin.email, subject, text);
+        }
+      }
+  
+      return res.status(existing ? 200 : 201).json({
+        message: existing ? "Answer updated successfully" : "Answer submitted successfully",
+        answer
+      });
     } catch (error) {
-        console.error("Error submitting assignment answer:", error);
-        return res.status(500).json({ message: 'Error submitting assignment answer' });
+      console.error("❌ Error submitting assignment answer:", error);
+      return res.status(500).json({ message: 'Error submitting assignment answer' });
     }
-};
+  };
 
 
 const getAnswersByAssignmentId = async (req, res) => {

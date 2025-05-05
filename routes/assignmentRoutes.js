@@ -3,6 +3,7 @@ const router = express.Router();
 const { createAssignmentQuestion, getAllAssignmentQuestions, updateAssignmentQuestion } = require('../controllers/assignmentQuestionController');
 const { submitAssignmentAnswer, getAnswersByAssignmentId, getAnswersByStudentId, getAssignmentAnswerByStudentAndAssignmentId } = require('../controllers/assignmentAnswerController');
 const { updateAssignmentScore } = require('../controllers/assignmentReviewController');
+const { getAssignmentSummaryByCourse } = require('../controllers/assignmentSummaryController');
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
 router.post('/question', authenticateUser, requireAdmin, createAssignmentQuestion);
@@ -13,5 +14,6 @@ router.get('/answer/assignment/:assignmentId', authenticateUser, getAnswersByAss
 router.get('/answer/student/:studentId',authenticateUser, getAnswersByStudentId);
 router.get('/answer', authenticateUser, getAssignmentAnswerByStudentAndAssignmentId);
 router.put('/review/assignment/:assignmentId', authenticateUser, requireAdmin, updateAssignmentScore);
+router.get('/summary', authenticateUser, requireAdmin, getAssignmentSummaryByCourse);
 
 module.exports = router;

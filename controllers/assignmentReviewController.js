@@ -23,7 +23,7 @@ const updateAssignmentScore = async (req, res) => {
         {
           model: AssignmentQuestion,
           as: "Assignment",
-          attributes: ["Assignment_Title"]
+          attributes: ["Assignment_Title", "TotalScore"]
         }
       ],
       order: [['createdAt', 'DESC']]
@@ -54,7 +54,7 @@ const updateAssignmentScore = async (req, res) => {
 
 Your assignment titled "${assignmentTitle}" has been reviewed.
 
-✅ Score: ${Score}
+✅ Score: ${Score} / ${answer.Assignment?.TotalScore}
 💬 Comments: ${commentText || "No comments"}
 
 Please log in to your dashboard to view the details.

@@ -254,19 +254,17 @@ exports.getAllStudents = async (req, res) => {
             company,
             isValid,
             isEnrolled,
-            page = 1, // ✅ Default to page 1
-            limit = 10 // ✅ Default limit to 10 students per page
+            page = 1,
+            limit = 10
         } = req.query;
 
-        // ✅ Convert pagination values to numbers
         const pageNumber = parseInt(page) || 1;
         const limitNumber = parseInt(limit) || 10;
         const offset = (pageNumber - 1) * limitNumber;
 
-        // ✅ Build Dynamic Query Conditions (Only add filters if provided)
         let whereClause = {};
 
-        if (courseId) whereClause.courseId = courseId;
+        if (courseId) whereClause.CourseId = courseId;
         if (batch_no) whereClause.batch_no = batch_no;
         if (studentId) whereClause.StudentId = { [Op.like]: `%${studentId}%` };
         if (salutation) whereClause.salutation = { [Op.like]: `%${salutation}%` };
@@ -278,65 +276,54 @@ exports.getAllStudents = async (req, res) => {
         if (company) whereClause.company = { [Op.like]: `%${company}%` };
         if (isEnrolled !== undefined && isEnrolled !== "") whereClause.isEnrolled = parseInt(isEnrolled);
 
-        // ✅ Get total student count before applying pagination
-        const totalStudents = await Student.count({ where: whereClause });
+        // ✅ Build include clause for isValid filter
+        const includeClause = [
+            {
+                model: Course,
+                attributes: ["courseId", "course_title"]
+            },
+            {
+                model: User,
+                attributes: ["isValid"],
+                required: isValid !== undefined && isValid !== "",
+                where: isValid !== undefined && isValid !== "" ? {
+                    isValid: parseInt(isValid)
+                } : undefined
+            }
+        ];
 
-        // ✅ Fetch Students with Filtering & Pagination
+        // ✅ First get total count with same filters
+        const totalStudents = await Student.count({
+            where: whereClause,
+            include: includeClause
+        });
+
+        // ✅ Now fetch paginated data
         const students = await Student.findAll({
             where: whereClause,
             attributes: [
-                "StudentId",
-                "salutation",
-                "student_name",
-                "email",
-                "mobile",
-                "university",
-                "batch_no",
-                "courseTitle",
-                "package",
-                "profession",
-                "company",
-                "designation",
-                "experience",
-                "knowMe",
-                "due",
-                "isEnrolled",
-                "createdAt"
+                "StudentId", "salutation", "student_name", "email", "mobile", "university",
+                "batch_no", "courseTitle", "package", "profession", "company", "designation",
+                "experience", "knowMe", "due", "isEnrolled", "createdAt"
             ],
-            include: [
-                {
-                    model: Course,
-                    attributes: ["courseId", "course_title"]
-                },
-                {
-                    model: User,
-                    attributes: ["isValid"],
-                    required: false,
-                    on: { col1: Sequelize.where(Sequelize.col("User.username"), "=", Sequelize.col("Student.StudentId")) }
-                }
-            ],
+            include: includeClause,
             order: [["createdAt", "DESC"]],
-            offset, // ✅ Pagination Offset
-            limit: limitNumber // ✅ Limit per page
+            offset,
+            limit: limitNumber
         });
-
-        // ✅ Apply `isValid` Filtering from User Table
-        let filteredStudents = students;
-        if (isValid !== undefined && isValid !== "") {
-            filteredStudents = students.filter(student => student.User && student.User.isValid == parseInt(isValid));
-        }
 
         return res.status(200).json({
             totalStudents,
-            totalPages: Math.ceil(totalStudents / limitNumber), // ✅ Total pages for pagination
+            totalPages: Math.ceil(totalStudents / limitNumber),
             currentPage: pageNumber,
-            students: filteredStudents
+            students
         });
     } catch (error) {
         console.error("Error fetching students:", error);
         return res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 
 exports.getStudentById = async (req, res) => {
@@ -728,7 +715,7 @@ exports.getAllAttendance = async (req, res) => {
 
 exports.migrateStudent = async (req, res) => {
     const { studentId } = req.params;
-    const { CourseId, batch_no, remark } = req.body;
+    const { CourseId, batch_no, package, remark } = req.body;
 
     if (!batch_no) {
         return res.status(400).json({ message: "batch_no is required." });
@@ -749,6 +736,7 @@ exports.migrateStudent = async (req, res) => {
                 quiz_answer: null,
                 remark: remark || `Migrated from batch ${oldBatch} to ${batch_no}`,
                 CourseId, // ✅ Update courseId as well
+                package, // ✅ Update package as well
                 batch_no // ✅ Update new batch as well
             },
             { where: { studentId } }

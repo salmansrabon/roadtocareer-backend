@@ -27,9 +27,21 @@ const AssignmentAnswer = sequelize.define('AssignmentAnswer', {
         allowNull: false
     },
     Comments: {
-        type: DataTypes.JSON, // ✅ Storing comments as an array
-        allowNull: true
+        type: DataTypes.TEXT('long'), // Store JSON string
+        allowNull: true,
+        get() {
+            const rawValue = this.getDataValue('Comments');
+            try {
+                return JSON.parse(rawValue);
+            } catch (e) {
+                return null;
+            }
+        },
+        set(value) {
+            this.setDataValue('Comments', JSON.stringify(value));
+        }
     },
+    
     Score: {
         type: DataTypes.INTEGER,
         allowNull: true

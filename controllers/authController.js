@@ -137,11 +137,12 @@ exports.resetPassword = async (req, res) => {
 
 exports.changePassword = async (req, res) => {
     try {
+        const { username } = req.params; // Extract studentId (username) from URL
         const { currentPassword, newPassword } = req.body;
-        const userId = req.user.id; // Extract user ID from authenticated token
 
-        // ✅ Find User by ID
-        const user = await User.findByPk(userId);
+        // ✅ Find User by StudentId (username)
+        const user = await User.findOne({ where: { username: username } });
+
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
@@ -163,6 +164,7 @@ exports.changePassword = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
 
 
 

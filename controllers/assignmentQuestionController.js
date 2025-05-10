@@ -8,6 +8,9 @@ const createAssignmentQuestion = async (req, res) => {
         // 1. Create the assignment in DB
         const newAssignment = await AssignmentQuestion.create(req.body);
 
+        // ✅ Generate Assignment Link
+        const assignmentLink = `${process.env.FRONTEND_URL || 'https://www.roadtocareer.net'}/assignment/submit/${newAssignment.id}`;
+
         // 2. Get students directly from DB for given courseId
         const courseId = req.body.courseId;
         const students = await Student.findAll({
@@ -28,20 +31,21 @@ const createAssignmentQuestion = async (req, res) => {
         });
 
         const text = `Hello,
-  
-  A new assignment has been published for your course (${courseId}).
-  
-  📌 Topic: ${req.body.topic_name}
-  📄 Title: ${req.body.Assignment_Title}
-  📝 Description: ${req.body.Description}
-  ⏳ Submission Deadline: ${submissionDeadline}
-  
-  Please make sure to submit it before the deadline.Login your portal to check the assignment details.
-  
-  Regards,
-  Team, Road to SDET`;
 
-        // 3. Send emails to all students (only if email exists and isValid === 0)
+A new assignment has been published for your course (${courseId}).
+
+📌 Topic: ${req.body.topic_name}
+📄 Title: ${req.body.Assignment_Title}
+⏳ Submission Deadline: ${submissionDeadline}
+
+👉 Assignment Link: ${assignmentLink}
+
+Please make sure to submit it before the deadline. Login to your portal to check the assignment details.
+
+Regards,
+Team, Road to SDET`;
+
+        // 3. Send emails to all students (only if email exists and isValid === 1)
         for (const student of students) {
             if (student.email && student.User?.isValid === 1) {
                 await sendEmail(student.email, subject, text);
@@ -49,14 +53,20 @@ const createAssignmentQuestion = async (req, res) => {
             }
         }
 
-        // 4. Return success response
+        // 4. Return success response with link
         console.log("✅ Assignment created and emails sent successfully.");
-        res.status(201).json(newAssignment);
+        res.status(201).json({
+            message: "Assignment created successfully.",
+            assignment: newAssignment,
+            assignmentLink
+        });
+
     } catch (error) {
         console.error("❌ Error creating assignment or sending emails:", error);
         res.status(500).json({ message: "Error creating assignment question or sending emails" });
     }
 };
+
 
 const getAllAssignmentQuestions = async (req, res) => {
     try {

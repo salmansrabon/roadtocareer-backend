@@ -48,7 +48,7 @@ exports.updateUserStatus = async (req, res) => {
 
                 // ✅ Send Email
                 await sendEmail(user.email,
-                    "Road to SDET Account Password Reset",
+                    "Road to SDET Student Enrollment Confirmation",
                     `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 studentId: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.
                     \nSite URL: https://www.roadtocareer.net/login
                     \n\nRegards,\nRoad to SDET Team`

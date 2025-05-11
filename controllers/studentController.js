@@ -339,6 +339,7 @@ exports.getStudentById = async (req, res) => {
                 "student_name",
                 "email",
                 "mobile",
+                "address",
                 "university",
                 "batch_no",
                 "courseTitle",

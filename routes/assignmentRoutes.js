@@ -13,7 +13,7 @@ router.post('/answer',authenticateUser, submitAssignmentAnswer);
 router.get('/answer/assignment/:assignmentId', authenticateUser, getAnswersByAssignmentId);
 router.get('/answer/student/:studentId',authenticateUser, getAnswersByStudentId);
 router.get('/answer', authenticateUser, getAssignmentAnswerByStudentAndAssignmentId);
-router.put('/review/assignment/:assignmentId', authenticateUser, requireAdmin, updateAssignmentScore);
-router.get('/summary', authenticateUser, requireAdmin, getAssignmentSummaryByCourse);
+router.put('/review/assignment/:assignmentId', authenticateUser, updateAssignmentScore);
+router.get('/summary', authenticateUser, getAssignmentSummaryByCourse);
 
 module.exports = router;

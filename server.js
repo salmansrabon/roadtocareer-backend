@@ -41,6 +41,7 @@ app.use("/api/mcq", mcqRoutes);
 app.use("/api/mcq-config", mcqConfigRoutes);
 app.use("/api/resume", resumeRoutes);
 app.use("/api/assignment", assignmentRoutes);
+app.use("/api/googledrive", require("./routes/googleDriveRoutes"));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {

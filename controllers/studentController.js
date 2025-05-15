@@ -359,7 +359,7 @@ exports.getStudentById = async (req, res) => {
             include: [
                 {
                     model: Course,
-                    attributes: ["courseId", "course_title"]
+                    attributes: ["courseId", "course_title", "drive_folder_id"]
                 },
                 {
                     model: User, // ✅ Join with users table

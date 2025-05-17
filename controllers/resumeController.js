@@ -231,6 +231,7 @@ exports.getAllStudentResumes = async (req, res) => {
       studentId,
       email,
       batch_no,
+      university,
       companyName,
       primarySkill,
       secondarySkill,
@@ -246,6 +247,7 @@ exports.getAllStudentResumes = async (req, res) => {
         studentId,
         email,
         batch_no,
+        university: `%${university || ''}%`,
         companyName: `%${companyName || ''}%`,
         primarySkill: `%${primarySkill || ''}%`,
         secondarySkill: `%${secondarySkill || ''}%`,
@@ -258,6 +260,7 @@ exports.getAllStudentResumes = async (req, res) => {
       if (studentId) whereClauses.push(`s.StudentId = :studentId`);
       if (email) whereClauses.push(`s.email = :email`);
       if (batch_no) whereClauses.push(`s.batch_no = :batch_no`);
+      if (university) whereClauses.push(`s.university LIKE :university`);
       if (companyName) whereClauses.push(`s.company LIKE :companyName`);
       if (primarySkill) whereClauses.push(`sr.primarySkill LIKE :primarySkill`);
       if (secondarySkill) whereClauses.push(`sr.secondarySkill LIKE :secondarySkill`);

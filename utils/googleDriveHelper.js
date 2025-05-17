@@ -11,6 +11,17 @@ const auth = new google.auth.GoogleAuth({
 
 const drive = google.drive({ version: "v3", auth });
 
+// ✅ Print Access Token
+(async () => {
+    try {
+        const client = await auth.getClient();
+        const tokenResponse = await client.getAccessToken();
+        console.log("Access Token:", tokenResponse.token || tokenResponse);
+    } catch (error) {
+        console.error("Error fetching access token:", error);
+    }
+})();
+
 /**
  * ✅ Grant Google Drive Access to User
  * @param {string} email - User's email
@@ -60,4 +71,30 @@ const removeDriveAccess = async (fileId, permissionId) => {
     }
 };
 
-module.exports = { grantDriveAccess, removeDriveAccess };
+/**
+ * List Files/Folders Under a Parent in Shared Drive
+ * @param {string} parentFolderId - The ID of the parent folder
+ * @param {string} sharedDriveId - The ID of the shared drive
+ * @returns {Promise<Object>} - List of files/folders
+ */
+const listFolderContents = async (parentFolderId, sharedDriveId) => {
+    try {
+        const response = await drive.files.list({
+            q: `'${parentFolderId}' in parents`,
+            corpora: 'drive',
+            driveId: sharedDriveId,
+            includeItemsFromAllDrives: true,
+            supportsAllDrives: true,
+            fields: 'files(id, name, mimeType, createdTime)',
+        });
+
+        return { success: true, files: response.data.files };
+    } catch (error) {
+        console.error("Error listing folder contents:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+
+
+module.exports = { grantDriveAccess, removeDriveAccess, listFolderContents };

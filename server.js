@@ -19,6 +19,7 @@ const mcqRoutes = require("./routes/mcqRoutes");
 const mcqConfigRoutes = require("./routes/mcqConfigRoutes");
 const resumeRoutes = require("./routes/resumeRoutes");
 const fileRoutes  = require("./routes/fileRoutes");
+const assignmentRoutes = require("./routes/assignmentRoutes");
 
 const app = express();
 app.use(cors());
@@ -39,6 +40,8 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/mcq", mcqRoutes);
 app.use("/api/mcq-config", mcqConfigRoutes);
 app.use("/api/resume", resumeRoutes);
+app.use("/api/assignment", assignmentRoutes);
+app.use("/api/googledrive", require("./routes/googleDriveRoutes"));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {

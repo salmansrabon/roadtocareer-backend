@@ -1,9 +1,9 @@
 const { grantDriveAccess, removeDriveAccess } = require("../utils/googleDriveHelper");
-const { sendEmail } = require("../utils/emailHelper"); 
+const { sendEmail } = require("../utils/emailHelper");
 const User = require("../models/User");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
-const bcrypt = require("bcryptjs"); 
+const bcrypt = require("bcryptjs");
 
 const generatePassword = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
@@ -48,8 +48,10 @@ exports.updateUserStatus = async (req, res) => {
 
                 // ✅ Send Email
                 await sendEmail(user.email,
-                    "Road to SDET Account Password Reset",
-                    `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 studentId: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.\n\nRegards,\nRoad to SDET Team`
+                    "Road to SDET Student Enrollment Confirmation",
+                    `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 studentId: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.
+                    \nSite URL: https://www.roadtocareer.net/login
+                    \n\nRegards,\nRoad to SDET Team`
                 );
 
                 responseMessage += " & New password sent to email";
@@ -83,6 +85,72 @@ exports.updateUserStatus = async (req, res) => {
     } catch (error) {
         console.error("Error updating user status:", error);
         return res.status(500).json({ message: "Internal server error" });
+    }
+};
+exports.getAllUsers = async (req, res) => {
+    try {
+        const users = await User.findAll({
+            attributes: ['id', 'username', 'email', 'role', 'isValid', 'createdAt', 'updatedAt'],
+        });
+
+        res.status(200).json({
+            total: users.length,
+            users
+        });
+    } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.updateUserById = async (req, res) => {
+    const { id } = req.params;
+    const { username, email, password, role, isValid } = req.body;
+
+    if (!username || !email || !role || isValid == null) {
+        return res.status(400).json({ message: "username, email, role, and isValid are required." });
+    }
+
+    try {
+        const user = await User.findOne({ where: { id } });  // ✅ Find by id explicitly
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        user.username = username;
+        user.email = email;
+        user.role = role;
+        user.isValid = isValid;
+
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            user.password = hashedPassword;
+        }
+
+        await user.save();
+
+        res.status(200).json({ message: "User updated successfully.", user });
+    } catch (error) {
+        console.error("Error updating user:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.deleteUserById = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const user = await User.findOne({ where: { id } }); 
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        await user.destroy();
+
+        res.status(200).json({ message: "User deleted successfully." });
+    } catch (error) {
+        console.error("Error deleting user:", error);
+        res.status(500).json({ message: "Internal server error." });
     }
 };
 

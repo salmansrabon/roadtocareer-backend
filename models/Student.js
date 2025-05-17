@@ -138,4 +138,7 @@ Student.belongsTo(Course, { foreignKey: "CourseId" });
 Package.hasMany(Student, { foreignKey: "package" });
 Student.belongsTo(Package, { foreignKey: "package" });
 
+User.hasMany(Student, { foreignKey: "StudentId" });
+Student.belongsTo(User, { foreignKey: "StudentId" });
+
 module.exports = Student;

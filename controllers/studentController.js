@@ -254,6 +254,7 @@ exports.getAllStudents = async (req, res) => {
             company,
             isValid,
             isEnrolled,
+            remark,
             page = 1,
             limit = 10
         } = req.query;
@@ -274,6 +275,7 @@ exports.getAllStudents = async (req, res) => {
         if (university) whereClause.university = { [Op.like]: `%${university}%` };
         if (profession) whereClause.profession = { [Op.like]: `%${profession}%` };
         if (company) whereClause.company = { [Op.like]: `%${company}%` };
+        if (remark) whereClause.remark = { [Op.like]: `%${remark}%` };
         if (isEnrolled !== undefined && isEnrolled !== "") whereClause.isEnrolled = parseInt(isEnrolled);
 
         // ✅ Build include clause for isValid filter
@@ -304,7 +306,7 @@ exports.getAllStudents = async (req, res) => {
             attributes: [
                 "StudentId", "salutation", "student_name", "email", "mobile", "university",
                 "batch_no", "courseTitle", "package", "profession", "company", "designation",
-                "experience", "knowMe", "due", "isEnrolled", "createdAt"
+                "experience", "knowMe", "remark", "due", "isEnrolled", "createdAt"
             ],
             include: includeClause,
             order: [["createdAt", "DESC"]],

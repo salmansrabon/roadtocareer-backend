@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const ImageController = require("../controllers/ImageController");
+const ImageController = require("../controllers/imageController");
 
 // Upload Image to Specific Folder
 router.post("/:folder/upload", ImageController.uploadImage);

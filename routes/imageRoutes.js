@@ -6,7 +6,7 @@ const ImageController = require("../controllers/ImageController");
 router.post("/:folder/upload", ImageController.uploadImage);
 
 // List Images in Specific Folder
-router.get("/:folder", ImageController.listImages);
+//router.get("/:folder", ImageController.listImages);
 // List Images in All Folder
 //router.get("/images", ImageController.listAllImages);
 

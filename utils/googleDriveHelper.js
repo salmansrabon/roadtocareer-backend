@@ -16,7 +16,7 @@ const drive = google.drive({ version: "v3", auth });
     try {
         const client = await auth.getClient();
         const tokenResponse = await client.getAccessToken();
-        console.log("Access Token:", tokenResponse.token || tokenResponse);
+        //console.log("Access Token:", tokenResponse.token || tokenResponse);
     } catch (error) {
         console.error("Error fetching access token:", error);
     }

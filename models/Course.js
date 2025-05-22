@@ -33,6 +33,10 @@ const Course = sequelize.define("Course", {
         type: DataTypes.BOOLEAN,
         defaultValue: true
     },
+    enrollment: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
+    },
     enrollment_start_date: {
         type: DataTypes.DATEONLY, // ✅ Ensures only date (YYYY-MM-DD)
         allowNull: false

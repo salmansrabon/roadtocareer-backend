@@ -24,10 +24,19 @@ exports.register = async (req, res) => {
             username,
             email,
             password: hashedPassword,
-            role
+            role,
         });
 
-        res.status(201).json({ message: "User registered successfully", user: newUser });
+        res.status(201).json({
+            message: "User registered successfully",
+            user: {
+                id: newUser.id,
+                username: newUser.username,
+                email: newUser.email,
+                role: newUser.role,
+                createdAt: newUser.createdAt
+            }
+        });
     } catch (error) {
         console.error("Error registering user:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -57,7 +66,7 @@ exports.login = async (req, res) => {
         }
 
         // ✅ Generate JWT Token
-        const token = jwt.sign({ id: user.id, username:user.username, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
         res.json({
             token,

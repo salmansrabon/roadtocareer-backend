@@ -8,6 +8,7 @@ const { Op, Sequelize } = require("sequelize");
 const moment = require("moment");
 const { sendEmail } = require("../utils/emailHelper");
 const sequelize = require("../config/db");
+const { grantDriveAccess } = require('../utils/googleDriveHelper');
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -101,7 +102,7 @@ exports.studentSignup = async (req, res) => {
 
         // ✅ Insert Student Data into `students` Table
         const newStudent = await Student.create({
-            salutation:salutation,
+            salutation: salutation,
             StudentId: studentId,
             CourseId: courseId,
             package: package_name,
@@ -154,8 +155,8 @@ exports.studentSignup = async (req, res) => {
             const period = hours >= 12 ? 'PM' : 'AM';
             hours = hours % 12 || 12; // convert "0" to "12" for midnight
             return `${hours}:${minute} ${period}`;
-          }
-          
+        }
+
 
         try {
             const formattedClassDays = Array.isArray(course.class_days)
@@ -725,79 +726,102 @@ exports.migrateStudent = async (req, res) => {
     }
 
     try {
+        //Find the student
         const student = await Student.findOne({ where: { studentId } });
-
         if (!student) {
             return res.status(404).json({ message: `No student found with ID: ${studentId}` });
         }
-
         const oldBatch = student.batch_no;
 
-        // ✅ Update quiz_answer and remark
+        //Update student migration info
         await Student.update(
             {
                 quiz_answer: null,
                 remark: remark || `Migrated from batch ${oldBatch} to ${batch_no}`,
-                CourseId, // ✅ Update courseId as well
-                package, // ✅ Update package as well
-                batch_no // ✅ Update new batch as well
+                CourseId, // Update courseId
+                package,  // Update package
+                batch_no  // Update new batch
             },
             { where: { studentId } }
         );
 
-        // ✅ Reset attendance list
+        //Reset attendance
         await Attendance.update(
             { attendanceList: null },
             { where: { studentId } }
         );
 
+        // Lookup the course's drive folder ID
+        const course = await Course.findOne({ where: { courseId: CourseId } });
+        if (!course || !course.drive_folder_id) {
+            // Handle missing folder gracefully
+            return res.status(200).json({
+                message: `Attendance and quiz answer reset, but no Drive folder found for CourseId: ${CourseId}`,
+                updatedCourse: CourseId,
+                updatedBatch: batch_no
+            });
+        }
+
+        // Grant drive access to student
+        const driveResult = await grantDriveAccess(course.drive_folder_id, student.email);
+        console.log("Drive access result:", driveResult);
+
+        if (!driveResult.success) {
+            return res.status(200).json({
+                message: `Migration done, but failed to grant Drive access: ${driveResult.error}`,
+                updatedCourse: CourseId,
+                updatedBatch: batch_no
+            });
+        }
+
         return res.status(200).json({
-            message: `✅ Attendance and quiz answer reset for ${studentId}`,
+            message: `Attendance and quiz answer reset, Drive access granted for ${studentId}`,
             updatedCourse: CourseId,
-            updatedBatch: batch_no
+            updatedBatch: batch_no,
+            drivePermissionId: driveResult.permissionId
         });
 
     } catch (error) {
-        console.error("❌ Error resetting student data:", error);
+        console.error("❌ Error in migration:", error);
         return res.status(500).json({ message: "Internal server error." });
     }
 };
 
 exports.getAllCompanies = async (req, res) => {
-  const { search = "", limit } = req.query;
+    const { search = "", limit } = req.query;
 
-  try {
-    let query = `
+    try {
+        let query = `
       SELECT DISTINCT s.company
       FROM students s
       WHERE s.company IS NOT NULL AND TRIM(s.company) != ''
     `;
 
-    const replacements = {};
+        const replacements = {};
 
-    // If search is passed → filter by it and force limit to 10
-    if (search) {
-      query += ` AND s.company LIKE :search ORDER BY s.company ASC LIMIT 10`;
-      replacements.search = `%${search}%`;
-    } else if (limit) {
-      query += ` ORDER BY s.company ASC LIMIT :limit`;
-      replacements.limit = parseInt(limit);
-    } else {
-      query += ` ORDER BY s.company ASC`; // all results, ordered
+        // If search is passed → filter by it and force limit to 10
+        if (search) {
+            query += ` AND s.company LIKE :search ORDER BY s.company ASC LIMIT 10`;
+            replacements.search = `%${search}%`;
+        } else if (limit) {
+            query += ` ORDER BY s.company ASC LIMIT :limit`;
+            replacements.limit = parseInt(limit);
+        } else {
+            query += ` ORDER BY s.company ASC`; // all results, ordered
+        }
+
+        const [results] = await sequelize.query(query, { replacements });
+        const companies = results.map((row) => row.company);
+
+        res.status(200).json({
+            success: true,
+            count: companies.length,
+            data: companies,
+        });
+    } catch (error) {
+        console.error("Error fetching company list:", error);
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
-
-    const [results] = await sequelize.query(query, { replacements });
-    const companies = results.map((row) => row.company);
-
-    res.status(200).json({
-      success: true,
-      count: companies.length,
-      data: companies,
-    });
-  } catch (error) {
-    console.error("Error fetching company list:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
-  }
 };
 
 

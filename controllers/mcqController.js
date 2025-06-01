@@ -425,6 +425,16 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                 });
             }
 
+            // Find the latest attempted_at in answerSheet (if available)
+            let submittedAt = null;
+            if (answerSheet.length > 0) {
+                submittedAt = answerSheet
+                    .map(ans => ans.attempted_at)
+                    .filter(Boolean)
+                    .sort()
+                    .pop();
+            }
+
             const mcqConfig = await McqConfig.findOne({
                 where: { CourseId: courseId }
             });
@@ -434,7 +444,8 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                 student_name: student.student_name,
                 totalMarks: totalMarks,
                 totalQuestions: mcqConfig ? mcqConfig.totalQuestion : 0,
-                answerSheet
+                answerSheet,
+                submittedAt
             });
         }
 
@@ -442,7 +453,7 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
             return res.status(404).json({ message: "No quiz results found for this course." });
         }
 
-        return res.status(200).json({ courseId, results: studentResults });
+        return res.status(200).json({ courseId, results: studentResults});
 
     } catch (error) {
         console.error("Error fetching all students' MCQ results:", error);

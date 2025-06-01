@@ -11,6 +11,7 @@ exports.authenticateUser = (req, res, next) => {
         req.user = decoded; // ✅ Store decoded token payload (id, role, etc.)
         next();
     });
+
 };
 
 // ✅ Middleware to Restrict Access to Admins Only

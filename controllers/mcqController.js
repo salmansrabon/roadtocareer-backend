@@ -322,6 +322,7 @@ exports.getStudentResult = async (req, res) => {
 
 
         return res.status(200).json({
+            student_name:student.student_name,
             StudentId: studentId,
             totalMarks: totalMarks,
             totalQuestions: mcqConfig.totalQuestion,

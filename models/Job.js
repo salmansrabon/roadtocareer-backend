@@ -23,6 +23,10 @@ const Job = sequelize.define("Job", {
         type: DataTypes.STRING,
         allowNull: false
     },
+    salary: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     level: {
         type: DataTypes.ENUM('Entry', 'Mid', 'Senior', 'Lead'),
         allowNull: false

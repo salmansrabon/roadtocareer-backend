@@ -9,6 +9,7 @@ exports.createJob = async (req, res) => {
       positionName,
       workType,
       experience,
+      salary,
       level,
       companyLocation,
       description,
@@ -36,6 +37,7 @@ exports.createJob = async (req, res) => {
       positionName,
       workType,
       experience,
+      salary, // Optional field, can be null
       level,
       companyLocation,
       description,
@@ -151,7 +153,7 @@ exports.updateJob = async (req, res) => {
     // Only update the provided fields
     const allowedFields = [
       'companyName', 'positionName', 'workType',
-      'experience', 'level', 'companyLocation',
+      'experience','salary', 'level', 'companyLocation',
       'description', 'deadline'
     ];
     const updates = {};

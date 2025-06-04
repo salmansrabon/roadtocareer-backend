@@ -13,11 +13,12 @@ exports.createJob = async (req, res) => {
       level,
       companyLocation,
       description,
+      application_url,
       deadline
     } = req.body;
 
     // Basic validation
-    if (!companyName || !positionName || !workType || !experience || !level || !companyLocation) {
+    if (!companyName || !positionName || !workType || !experience || !level) {
       return res.status(400).json({ message: "All fields except description are required." });
     }
 
@@ -37,10 +38,11 @@ exports.createJob = async (req, res) => {
       positionName,
       workType,
       experience,
-      salary, // Optional field, can be null
+      salary,
       level,
       companyLocation,
       description,
+      application_url,
       deadline: deadline ? new Date(deadline) : null // Convert to Date if provided
     });
 
@@ -62,7 +64,8 @@ exports.getJobs = async (req, res) => {
       workType,
       experience,
       level,
-      offset
+      offset,
+      latest
     } = req.query;
 
     const limit = 20;
@@ -81,30 +84,30 @@ exports.getJobs = async (req, res) => {
     }
 
     // --- Multi-value, case-insensitive ENUM filters ---
-    // For workType
     if (workType) {
       let types = workType.split(',').map(type => type.trim().toLowerCase());
       where[Op.and] = where[Op.and] || [];
       where[Op.and].push(
-        { [Op.or]: types.map(type => {
+        {
+          [Op.or]: types.map(type => {
             return {
               [Op.and]: [
-                // LOWER() for case-insensitive matching
                 sequelize.where(
                   sequelize.fn('LOWER', sequelize.col('workType')),
                   type
                 )
               ]
             };
-        })}
+          })
+        }
       );
     }
-    // For level
     if (level) {
       let levels = level.split(',').map(l => l.trim().toLowerCase());
       where[Op.and] = where[Op.and] || [];
       where[Op.and].push(
-        { [Op.or]: levels.map(lvl => {
+        {
+          [Op.or]: levels.map(lvl => {
             return {
               [Op.and]: [
                 sequelize.where(
@@ -113,24 +116,42 @@ exports.getJobs = async (req, res) => {
                 )
               ]
             };
-        })}
+          })
+        }
       );
     }
 
+    // === Filter by deadline if latest is present ===
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    let whereWithLatest = { ...where }; // clone
+    whereWithLatest.deadline = { [Op.gte]: todayStr };
+
+    // If 'latest' param, only show future deadline jobs
+    let finalWhere = latest ? whereWithLatest : where;
+
     // Get total count of all matches (before pagination)
-    const total = await Job.count({ where });
+    const total = await Job.count({ where: finalWhere });
+
+    // Always count how many jobs are "latest" (for info in frontend)
+    const latestCount = await Job.count({ where: whereWithLatest });
 
     // Get page results
     const jobs = await Job.findAll({
-      where,
+      where: finalWhere,
       limit,
       offset: pageOffset,
       order: [['createdAt', 'DESC']]
     });
 
     res.status(200).json({
-      total,          // Total matching jobs (all pages)
-      count: jobs.length, // Jobs in this page
+      total,                // Total jobs in result set (with/without latest)
+      count: jobs.length,   // Jobs in this page
+      latestCount,          // Always show how many jobs are upcoming
       jobs
     });
   } catch (error) {
@@ -138,6 +159,7 @@ exports.getJobs = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch jobs.", error: error.message });
   }
 };
+
 
 
 exports.updateJob = async (req, res) => {
@@ -153,8 +175,8 @@ exports.updateJob = async (req, res) => {
     // Only update the provided fields
     const allowedFields = [
       'companyName', 'positionName', 'workType',
-      'experience','salary', 'level', 'companyLocation',
-      'description', 'deadline'
+      'experience', 'salary', 'level', 'companyLocation',
+      'description', 'application_url', 'deadline'
     ];
     const updates = {};
     for (const key of allowedFields) {

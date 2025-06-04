@@ -39,6 +39,11 @@ const Job = sequelize.define("Job", {
         type: DataTypes.TEXT,
         allowNull: true
     },
+    application_url: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+
     deadline: {
         type: DataTypes.DATE,
         allowNull: true,

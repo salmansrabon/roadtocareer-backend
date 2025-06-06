@@ -30,6 +30,7 @@ global.Request = fetch.Request;
 global.Response = fetch.Response;
 const Blob = require('fetch-blob');
 global.Blob = Blob;
+global.FormData = require('formdata-node').FormData;
 
 
 const app = express();

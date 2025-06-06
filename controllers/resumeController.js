@@ -6,9 +6,10 @@ const { OpenAI } = require("openai");
 const pdfParse = require("pdf-parse");
 const fs = require("fs");
 const path = require("path");
+const fetch = require('node-fetch');
 
 // Initialize OpenAI
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, fetch });
 
 exports.evaluateResume = async (req, res) => {
     try {

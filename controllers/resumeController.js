@@ -5,11 +5,10 @@ const sequelize = require("../config/db");
 const { OpenAI } = require("openai");
 const pdfParse = require("pdf-parse");
 const fs = require("fs");
-const path = require("path");
-const fetch = require('node-fetch');
+// const fetch = require('node-fetch');
 
 // Initialize OpenAI
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, fetch });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 exports.evaluateResume = async (req, res) => {
     try {

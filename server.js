@@ -23,14 +23,14 @@ const assignmentRoutes = require("./routes/assignmentRoutes");
 const jobRoutes = require("./routes/jobRoutes");
 
 // remove this block after upgrading to node 18 into cpanel
-const fetch = require('node-fetch');
-global.fetch = fetch;
-global.Headers = fetch.Headers;
-global.Request = fetch.Request;
-global.Response = fetch.Response;
-const Blob = require('fetch-blob');
-global.Blob = Blob;
-global.FormData = require('formdata-node').FormData;
+// const fetch = require('node-fetch');
+// global.fetch = fetch;
+// global.Headers = fetch.Headers;
+// global.Request = fetch.Request;
+// global.Response = fetch.Response;
+// const Blob = require('fetch-blob');
+// global.Blob = Blob;
+// global.FormData = require('formdata-node').FormData;
 
 
 const app = express();

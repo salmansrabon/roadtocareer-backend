@@ -22,6 +22,13 @@ const fileRoutes  = require("./routes/fileRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
 const jobRoutes = require("./routes/jobRoutes");
 
+const fetch = require('node-fetch');
+global.fetch = fetch;
+global.Headers = fetch.Headers;
+global.Request = fetch.Request;
+global.Response = fetch.Response;
+
+
 const app = express();
 app.use(cors());
 app.use(express.json());

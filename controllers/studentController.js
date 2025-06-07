@@ -9,6 +9,7 @@ const moment = require("moment");
 const { sendEmail } = require("../utils/emailHelper");
 const sequelize = require("../config/db");
 const { grantDriveAccess } = require('../utils/googleDriveHelper');
+const AssignmentAnswer = require('../models/AssignmentAnswer');
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -823,6 +824,93 @@ exports.getAllCompanies = async (req, res) => {
         res.status(500).json({ success: false, message: "Internal server error" });
     }
 };
+
+// Helper function from earlier
+
+function calculateCourseCompletion(attendance, assignment) {
+    const minAttendance = 30;
+    const minAssignment = 10;
+
+    // Cap to max values
+    const cappedAttendance = Math.min(attendance, minAttendance);
+    const cappedAssignment = Math.min(assignment, minAssignment);
+
+    // Compute individual percentages
+    const attendancePercent = (cappedAttendance / minAttendance) * 100;
+    const assignmentPercent = (cappedAssignment / minAssignment) * 100;
+
+    // If either is 100% and the other is 0%, result is 50%
+    if ((attendancePercent === 100 && assignmentPercent === 0) ||
+        (assignmentPercent === 100 && attendancePercent === 0)) {
+        return 50;
+    }
+
+    // If both are zero, return 0
+    if (attendancePercent === 0 && assignmentPercent === 0) {
+        return 0;
+    }
+
+    // For minimal progress: 3 attendance & 1 assignment = 10%
+    if (cappedAttendance >= 3 && cappedAssignment >= 1 &&
+        attendancePercent < 100 && assignmentPercent < 100) {
+        // Calculate proportional progress, but not less than 10%
+        const proportional = Math.round((attendancePercent + assignmentPercent) / 2);
+        return proportional < 10 ? 10 : proportional;
+    }
+
+    // Otherwise, average both
+    return Math.round((attendancePercent + assignmentPercent) / 2);
+}
+
+
+exports.getCourseProgress = async (req, res) => {
+    try {
+        const { studentId } = req.params;
+
+        // 1. Get all attendance records for the student
+        const attendanceRecords = await Attendance.findAll({
+            where: { StudentId: studentId }
+        });
+
+        // 2. Calculate total attendance count by parsing attendanceList arrays
+        let attendanceCount = 0;
+        attendanceRecords.forEach(record => {
+            if (record.attendanceList) {
+                try {
+                    const list = JSON.parse(record.attendanceList);
+                    if (Array.isArray(list)) {
+                        attendanceCount += list.length;
+                    }
+                } catch (err) {
+                    // Ignore parse errors, treat as 0
+                }
+            }
+        });
+
+        // 3. Get assignment count
+        const assignmentCount = await AssignmentAnswer.count({ where: { StudentId: studentId } });
+
+        // 4. Calculate percentages
+        const attendancePercentage = Math.min((attendanceCount / 30) * 100, 100);
+        const effectiveAssignments = Math.min(assignmentCount, Math.floor(attendanceCount / 3));
+        const assignmentPercentage = Math.min((effectiveAssignments / 10) * 100, 100);
+        const courseCompletionPercentage = calculateCourseCompletion(attendanceCount, assignmentCount);
+
+        // 5. Return the results
+        res.json({
+            attendanceCount,
+            assignmentCount,
+            attendancePercentage: Math.round(attendancePercentage),
+            assignmentPercentage: Math.round(assignmentPercentage),
+            courseCompletionPercentage
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+
 
 
 

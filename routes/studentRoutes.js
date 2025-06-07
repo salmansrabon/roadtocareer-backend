@@ -1,5 +1,5 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress  } = require("../controllers/studentController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
@@ -15,5 +15,6 @@ router.get("/attendance/:studentId", authenticateUser, getAttendance);
 router.get("/list/attendance", authenticateUser, requireAdmin, getAllAttendance);
 router.post("/migrate/:studentId", authenticateUser, requireAdmin, migrateStudent);
 router.get("/companies/list", getAllCompanies);
+router.get("/course-progress/:studentId", authenticateUser, getCourseProgress);
 
 module.exports = router;

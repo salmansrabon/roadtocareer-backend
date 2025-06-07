@@ -304,7 +304,7 @@ exports.getUnpaidStudents = async (req, res) => {
                     [Op.notIn]: paidStudentIds
                 }
             },
-            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email"],
+            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email", "remark"],
             include: [
                 {
                     model: Course,

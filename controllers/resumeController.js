@@ -21,30 +21,21 @@ exports.evaluateResume = async (req, res) => {
         const dataBuffer = fs.readFileSync(req.file.path);
         const pdfData = await pdfParse(dataBuffer);
         const resumeText = pdfData.text;
+        console.log("Resume Text:", resumeText);
 
         //Prepare the prompt
-        const prompt = `
-            You are an expert technical HR recruiter.
-            Company Name: ${companyName}
-            Job Title: ${jobTitle}
-            Here is the job description:
-            ${jobDescription}
+        const systemPrompt = `
+            You are an expert technical HR recruiter. You will review a candidate's resume versus a job description and score them out of 10, using these STRICT SCORING RULES:
 
-            Here is my resume:
-            ${resumeText}
-
-            Evaluate how well I fit this job.
-
-            STRICT SCORING RULES:
-            - If my years of experience do not meet the job's minimum, give a score of 0.
-            - If my resume is NOT directly related to the required skills, technologies, or job responsibilities, give a score of 0. Do not be polite or optimistic in this case.
-            - If the resume is generic or from a completely unrelated field (e.g., a teaching or banking resume for a software engineering job), give a score of 0.
-            - Only give a score above 0 if there is a clear and direct match to the job requirements.
-            - Clearly state the main differences between what the job requires and what is present in my resume.
+            - If the candidate's years of experience do not meet the job's minimum, give a score of 0.
+            - If the resume is NOT directly related to the required skills, technologies, or job responsibilities, give a score of 0. Do not be polite or optimistic in this case.
+            - If the resume is generic or from a completely unrelated field (e.g., teaching or banking for a software engineering job), give a score of 0.
+            - Only give a score above 0 if there is a clear and related match to the job requirements.
+            - Clearly state the main differences between what the job requires and what is present in the resume.
             - During evaluation, mention the company name, years of experience, or skills that are required by the company but lacking in the candidate's resume.
-            - Also provide feedback on how the candidate can improve their resume to better match the job description.
+            - Provide feedback on how the candidate can improve their resume to better match the job description.
             - If someone has a lot of experience but the resume is not related to the job, tell them directly that they should not apply for this job.
-            - If the resume is a 100% match with the JD, give a score of 10.
+            - If the resume is a 100% match with required skills in the JD, give a score of 10.
             - If the resume is 80%-90% matched with the JD (8 or 9 out of 10), suggest applying for the job and explain how to improve the resume to reach a 10/10.
             - If the candidate is not a good fit for this job, suggest they apply for jobs that better match their resume.
             - Also, evaluate whether the resume is standard or below standard.
@@ -53,17 +44,32 @@ exports.evaluateResume = async (req, res) => {
             Score: X/10
             Feedback: ...
             Where X is a number between 0 and 10, with 10 being a perfect match.
-            And mention the company name within your feedback so that I can understand for which company I am applying for
-            `;  
+            ALWAYS mention the company name within your feedback so it is clear which company is being evaluated.
+            `;
 
+            const userPrompt = `
+            Company Name: ${companyName}
+            Job Title: ${jobTitle}
 
-        //Call OpenAI API
+            Here is the job description:
+            ${jobDescription}
+
+            Here is my resume:
+            ${resumeText}
+
+            Evaluate how well I fit this job.
+            `;
+
         const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo", // or "gpt-4o"
-            messages: [{ role: "user", content: prompt }],
+            model: "gpt-4o",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
             max_tokens: 300,
             temperature: 0.3,
         });
+
 
         const result = completion.choices[0].message.content || "No feedback";
         // Extract score (optional: parse and return as number)
@@ -145,7 +151,7 @@ exports.createResume = async (req, res) => {
             reference,
             resumeFile,
             photo,
-            
+
         } = req.body;
 
         // Check if student exists
@@ -308,49 +314,49 @@ exports.deleteResume = async (req, res) => {
 
 exports.getAllStudentResumes = async (req, res) => {
     const {
-      studentName,
-      studentId,
-      email,
-      batch_no,
-      university,
-      companyName,
-      primarySkill,
-      secondarySkill,
-      jobStatus,
-      page = 1,
-      limit = 10
-    } = req.query;
-  
-    try {
-      const whereClauses = [];
-      const replacements = {
-        studentName: `%${studentName || ''}%`,
+        studentName,
         studentId,
         email,
         batch_no,
-        university: `%${university || ''}%`,
-        companyName: `%${companyName || ''}%`,
-        primarySkill: `%${primarySkill || ''}%`,
-        secondarySkill: `%${secondarySkill || ''}%`,
+        university,
+        companyName,
+        primarySkill,
+        secondarySkill,
         jobStatus,
-        limit: parseInt(limit),
-        offset: (parseInt(page) - 1) * parseInt(limit)
-      };
-  
-      if (studentName) whereClauses.push(`s.student_name LIKE :studentName`);
-      if (studentId) whereClauses.push(`s.StudentId = :studentId`);
-      if (email) whereClauses.push(`s.email = :email`);
-      if (batch_no) whereClauses.push(`s.batch_no = :batch_no`);
-      if (university) whereClauses.push(`s.university LIKE :university`);
-      if (companyName) whereClauses.push(`s.company LIKE :companyName`);
-      if (primarySkill) whereClauses.push(`sr.primarySkill LIKE :primarySkill`);
-      if (secondarySkill) whereClauses.push(`sr.secondarySkill LIKE :secondarySkill`);
-      if (jobStatus) whereClauses.push(`sr.jobStatus = :jobStatus`);
-  
-      const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
-  
-      const results = await sequelize.query(
-        `
+        page = 1,
+        limit = 10
+    } = req.query;
+
+    try {
+        const whereClauses = [];
+        const replacements = {
+            studentName: `%${studentName || ''}%`,
+            studentId,
+            email,
+            batch_no,
+            university: `%${university || ''}%`,
+            companyName: `%${companyName || ''}%`,
+            primarySkill: `%${primarySkill || ''}%`,
+            secondarySkill: `%${secondarySkill || ''}%`,
+            jobStatus,
+            limit: parseInt(limit),
+            offset: (parseInt(page) - 1) * parseInt(limit)
+        };
+
+        if (studentName) whereClauses.push(`s.student_name LIKE :studentName`);
+        if (studentId) whereClauses.push(`s.StudentId = :studentId`);
+        if (email) whereClauses.push(`s.email = :email`);
+        if (batch_no) whereClauses.push(`s.batch_no = :batch_no`);
+        if (university) whereClauses.push(`s.university LIKE :university`);
+        if (companyName) whereClauses.push(`s.company LIKE :companyName`);
+        if (primarySkill) whereClauses.push(`sr.primarySkill LIKE :primarySkill`);
+        if (secondarySkill) whereClauses.push(`sr.secondarySkill LIKE :secondarySkill`);
+        if (jobStatus) whereClauses.push(`sr.jobStatus = :jobStatus`);
+
+        const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+        const results = await sequelize.query(
+            `
         SELECT 
           s.StudentId, 
           s.salutation,
@@ -371,42 +377,42 @@ exports.getAllStudentResumes = async (req, res) => {
         ORDER BY sr.updatedAt DESC
         LIMIT :limit OFFSET :offset
         `,
-        {
-          replacements,
-          type: sequelize.QueryTypes.SELECT,
-        }
-      );
-  
-      const countResult = await sequelize.query(
-        `
+            {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        const countResult = await sequelize.query(
+            `
         SELECT COUNT(*) as total
         FROM students s
         LEFT JOIN student_resumes sr ON s.StudentId = sr.studentId
         ${whereSql}
         `,
-        {
-          replacements,
-          type: sequelize.QueryTypes.SELECT,
-        }
-      );
-  
-      const total = countResult[0]?.total || 0;
-      const totalPages = Math.ceil(total / parseInt(limit));
-  
-      res.status(200).json({
-        success: true,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        totalPages,
-        data: results,
-      });
+            {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        const total = countResult[0]?.total || 0;
+        const totalPages = Math.ceil(total / parseInt(limit));
+
+        res.status(200).json({
+            success: true,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            totalPages,
+            data: results,
+        });
     } catch (error) {
-      console.error("Error fetching student resumes:", error);
-      res.status(500).json({ success: false, message: "Internal server error" });
+        console.error("Error fetching student resumes:", error);
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
-  };
-  
+};
+
 
 
 

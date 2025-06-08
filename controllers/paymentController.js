@@ -2,6 +2,7 @@ const Payment = require("../models/Payment");
 const Package = require("../models/Package");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
+const User = require("../models/User");
 const { Op, Sequelize } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
 Payment.belongsTo(Student, { foreignKey: "studentId", targetKey: "StudentId" });
@@ -272,6 +273,7 @@ exports.getStudentPayments = async (req, res) => {
     }
 };
 
+//
 exports.getUnpaidStudents = async (req, res) => {
     try {
         const { courseId, month, batch_no, limit = 10, offset = 0 } = req.query;
@@ -309,6 +311,10 @@ exports.getUnpaidStudents = async (req, res) => {
                 {
                     model: Course,
                     attributes: ["course_title", "batch_no"],
+                },
+                {
+                    model: User,
+                    attributes: ["isValid"], // <-- join isValid here!
                 }
             ],
             limit: parseInt(limit),

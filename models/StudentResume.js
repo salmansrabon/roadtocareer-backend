@@ -114,6 +114,23 @@ const StudentResume = sequelize.define("StudentResume", {
             this.setDataValue("trainingInfo", JSON.stringify(value));
         }
     },
+    achievements: {
+        type: DataTypes.TEXT("long"),
+        allowNull: true,
+        get() {
+            const raw = this.getDataValue("achievements");
+            if (!raw) return [];
+            try {
+                return typeof raw === "string" ? JSON.parse(raw) : raw;
+            } catch (e) {
+                return [];
+            }
+        }
+        ,
+        set(value) {
+            this.setDataValue("achievements", JSON.stringify(value));
+        }
+    },
     primarySkill: {
         type: DataTypes.TEXT("long"),
         allowNull: true,

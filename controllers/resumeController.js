@@ -235,6 +235,7 @@ exports.updateResume = async (req, res) => {
 
         // 🔄 Update only provided fields
         const updatableFields = [
+            "careerObjective",
             "fullName",
             "email",
             "phoneNumber",

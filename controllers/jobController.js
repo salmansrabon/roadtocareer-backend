@@ -65,11 +65,31 @@ exports.getJobs = async (req, res) => {
       experience,
       level,
       offset,
-      latest
+      latest,
+      jobId   // <-- Now accepting jobId param
     } = req.query;
 
     const limit = 20;
     const pageOffset = parseInt(offset, 10) || 0;
+
+    // Make todayStr available before potential jobId shortcut
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    // If jobId is provided, ONLY filter by ID and ignore all other params
+    if (jobId) {
+      const job = await Job.findOne({ where: { id: jobId } });
+      return res.status(200).json({
+        total: job ? 1 : 0,
+        count: job ? 1 : 0,
+        latestCount: job ? ((job.deadline && job.deadline >= todayStr) ? 1 : 0) : 0,
+        jobs: job ? [job] : []
+      });
+    }
+
     let where = {};
 
     // String filters with LIKE for partial/case-insensitive search
@@ -122,16 +142,9 @@ exports.getJobs = async (req, res) => {
     }
 
     // === Filter by deadline if latest is present ===
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-
-    let whereWithLatest = { ...where }; // clone
+    let whereWithLatest = { ...where };
     whereWithLatest.deadline = { [Op.gte]: todayStr };
 
-    // If 'latest' param, only show future deadline jobs
     let finalWhere = latest ? whereWithLatest : where;
 
     // Get total count of all matches (before pagination)
@@ -159,6 +172,7 @@ exports.getJobs = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch jobs.", error: error.message });
   }
 };
+
 
 
 

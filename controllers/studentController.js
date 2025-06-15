@@ -881,22 +881,27 @@ exports.getCourseProgress = async (req, res) => {
                     if (Array.isArray(list)) {
                         attendanceCount += list.length;
                     }
-                } catch (err) {
-                    // Ignore parse errors, treat as 0
+                } catch {
+                    // ignore parse errors
                 }
             }
         });
 
-        // 3. Get assignment count
-        const assignmentCount = await AssignmentAnswer.count({ where: { StudentId: studentId } });
+        // 3. Get assignment count (out of 10 total assignments)
+        const assignmentCount = await AssignmentAnswer.count({
+            where: { StudentId: studentId }
+        });
 
         // 4. Calculate percentages
         const attendancePercentage = Math.min((attendanceCount / 30) * 100, 100);
-        const effectiveAssignments = Math.min(assignmentCount, Math.floor(attendanceCount / 3));
-        const assignmentPercentage = Math.min((effectiveAssignments / 10) * 100, 100);
-        const courseCompletionPercentage = calculateCourseCompletion(attendanceCount, assignmentCount);
+        const assignmentPercentage = Math.min((assignmentCount / 10) * 100, 100);
 
-        // 5. Return the results
+        // 5. Overall completion is the average of the two
+        const courseCompletionPercentage = Math.round(
+            (attendancePercentage + assignmentPercentage) / 2
+        );
+
+        // 6. Return the results
         res.json({
             attendanceCount,
             assignmentCount,
@@ -909,6 +914,7 @@ exports.getCourseProgress = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };
+
 
 
 

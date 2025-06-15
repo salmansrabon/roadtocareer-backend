@@ -122,7 +122,11 @@ const Student = sequelize.define("Student", {
     quiz_answer: {
         type: DataTypes.TEXT('long'),
         allowNull: true
-    }
+    },
+    get_certificate: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
 }, {
     tableName: "students",
     timestamps: true // ✅ Includes createdAt & updatedAt

@@ -358,7 +358,8 @@ exports.getStudentById = async (req, res) => {
                 "isEnrolled",
                 "certificate",
                 "opinion",
-                "createdAt"
+                "createdAt",
+                "get_certificate"
             ],
             include: [
                 {
@@ -425,7 +426,8 @@ exports.updateStudent = async (req, res) => {
             remark,
             opinion,
             isEnrolled,
-            certificate
+            certificate,
+            get_certificate
         } = req.body; // Extract fields from request body
 
         // ✅ Find Student by StudentId
@@ -454,7 +456,8 @@ exports.updateStudent = async (req, res) => {
             remark,
             opinion,
             isEnrolled,
-            certificate
+            certificate,
+            get_certificate
         });
 
         // ✅ If email is updated, also update it in the User table

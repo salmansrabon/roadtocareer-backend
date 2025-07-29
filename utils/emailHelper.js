@@ -14,7 +14,7 @@ const auth = new google.auth.GoogleAuth({
 });
 
 // Function to send email
-async function sendEmail(to, subject, text) {
+async function sendEmail(to, subject, text, contentType = "text/plain") {
     try {
         const client = await auth.getClient();
         const gmail = google.gmail({ version: "v1", auth: client });
@@ -29,7 +29,7 @@ async function sendEmail(to, subject, text) {
             `To: ${to}\r\n` +
             `Subject: ${subject}\r\n` +
             "MIME-Version: 1.0\r\n" +
-            "Content-Type: text/plain; charset=UTF-8\r\n\r\n" +
+            `Content-Type: ${contentType}; charset=UTF-8\r\n\r\n` +
             `${text}`
         ).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 

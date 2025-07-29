@@ -10,6 +10,7 @@ const { sendEmail } = require("../utils/emailHelper");
 const sequelize = require("../config/db");
 const { grantDriveAccess } = require('../utils/googleDriveHelper');
 const AssignmentAnswer = require('../models/AssignmentAnswer');
+const {formatDate} = require('../utils/formatDate');
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -172,8 +173,8 @@ exports.studentSignup = async (req, res) => {
                 ---------------------
                 Course Title: ${course.course_title}
                 Batch No: ${course.batch_no}
-                Orientation Date: ${course.orientation_date}
-                Class Start Date: ${course.class_start_date}
+                Orientation Date: ${formatDate(course.orientation_date)} at 8:30PM
+                Class Start Date: ${formatDate(course.class_start_date)}
                 Class Days: ${formattedClassDays}
                 Class Time: ${formatTime(course.class_time)}
 
@@ -183,7 +184,66 @@ exports.studentSignup = async (req, res) => {
                 Course Admin
             `;
 
-            await sendEmail(email, "Road to SDET-Welcome to our Course!", studentEmailBody);
+            const paymentEmailBody = `
+                            <div style="font-family: Arial, sans-serif; color: #222;">
+                            <p>Assalamu Alaikum,</p>
+                            <p>Greetings from <strong>Road to SDET</strong>! Hope you’re doing well. We’re excited to let you know that <strong>batch ${course.batch_no}</strong> is starting soon.</p>
+                            
+                            <h3 style="color: #2d7cff;">Class Schedule and Related Information:</h3>
+                            <ul>
+                                <li><strong>Orientation date &amp; time:</strong> ${formatDate(course.orientation_date)} from ${formatTime(course.class_time)}</li>
+                                <li><strong>Class start date:</strong> ${formatDate(course.class_start_date)} from ${formatTime(course.class_time)}</li>
+                            </ul>
+                            <h4>Class schedule:</h4>
+                            <ul>
+                                <li><strong>Day:</strong> ${formattedClassDays}</li>
+                                <li><strong>Time:</strong> ${formatTime(course.class_time)}</li>
+                            </ul>
+                            <h4>Class link:</h4>
+                            <p>You’ll receive a Google Calendar invitation (with the class link) once your payment is complete.</p>
+                            <h4>Platform &amp; Resources:</h4>
+                            <ul>
+                                <li><strong>Student Portal:</strong> Attendance, Assignments &amp; performance tracking</li>
+                                <li><strong>Google Drive:</strong> Slides, PDFs &amp; recorded videos</li>
+                                <li><strong>Discord:</strong> For support and discussion</li>
+                            </ul>
+                            <h4>Monthly Rewards:</h4>
+                            <p>Top 5 scorers each month will receive a performance bonus of <strong>Tk 500</strong>.</p>
+                            <h4>Payment Procedure:</h4>
+                            <ul>
+                                <li><strong>Total Fee:</strong> Tk 8,500 (payable in 3 installments in 3 months)</li>
+                                <li><strong>Installment 1:</strong> Tk 3,000 [Admission time]</li>
+                                <li><strong>Installment 2:</strong> Tk 2,500 [Second month]</li>
+                                <li><strong>Installment 3:</strong> Tk 3,000 [Third month]</li>
+                                <li><strong>Payment Deadline:</strong> ${formatDate(course.orientation_date)} at 11:59 PM</li>
+                            </ul>
+                            <h4>How to Pay:</h4>
+                            <ol>
+                                <li>Send money via <strong>Bkash / Nagad</strong> to <strong>01686606909</strong>, including your name in the reference field.</li>
+                                <li>After paying, please send a screenshot of your transaction via WhatsApp to <strong>01782808778</strong> to confirm your seat.</li>
+                            </ol>
+                            <p style="background-color: #f9e530ff; padding: 8px 12px; border-radius: 4px;">
+                                <strong>Note:</strong> Don’t miss the orientation—it’s essential to know our rules, regulations, and policies.
+                            </p>
+                            <p>If you have any questions, feel free to ask on our official support WhatsApp <strong>01782808778</strong>.<br>
+                            We look forward to seeing you in class!</p>
+                            <hr>
+                            <p>
+                                Regards,<br>
+                                <strong>Team, Road to SDET</strong><br>
+                                <a href="https://www.linkedin.com/company/road-to-sdet">Linkedin</a> | 
+                                <a href="https://www.facebook.com/roadtosdet">Page</a> | 
+                                <a href="https://www.facebook.com/groups/roadtosdet">Group</a> | 
+                                <a href="https://www.roadtocareer.net">Website</a> | <br/>
+                                WhatsApp: +8801782808778
+                            </p>
+                        </div>
+                            `;
+
+            await sendEmail(email, `Road to SDET- Batch ${course.batch_no} Welcome to our Course!`, studentEmailBody);
+            if(course.course_title=="Full Stack SQA"){
+                await sendEmail(email, `Road to SDET- Batch ${course.batch_no} Course payment procedure and class schedule`, paymentEmailBody, "text/html");
+            }
 
         } catch (emailError) {
             console.error("❌ Error sending email to student:", emailError);

@@ -407,11 +407,12 @@ exports.getStudentById = async (req, res) => {
                 "university",
                 "batch_no",
                 "courseTitle",
-                "package",  // ✅ Needed to filter the package
+                "package",
                 "profession",
                 "company",
                 "designation",
                 "experience",
+                "passingYear",
                 "knowMe",
                 "remark",
                 "due",

@@ -112,7 +112,15 @@ const getAnswersByStudentId = async (req, res) => {
     const studentId = req.params.studentId;
 
     const answers = await AssignmentAnswer.findAll({
-      where: { StudentId: studentId }
+      where: { StudentId: studentId },
+      include: [
+        {
+          model: AssignmentQuestion,
+          as: 'Assignment',
+          attributes: ['id', 'Assignment_Title', 'SubmissionDate']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
     });
 
     if (answers.length === 0) {

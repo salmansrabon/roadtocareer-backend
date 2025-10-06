@@ -953,7 +953,7 @@ exports.getCourseProgress = async (req, res) => {
 
         // 3. Get assignment count (out of 10 total assignments)
         const assignmentCount = await AssignmentAnswer.count({
-            where: { StudentId: studentId }
+            where: { StudentId: studentId, Score: { [Op.ne]: null } }
         });
 
         // 4. Calculate percentages
@@ -978,14 +978,3 @@ exports.getCourseProgress = async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };
-
-
-
-
-
-
-
-
-
-
-

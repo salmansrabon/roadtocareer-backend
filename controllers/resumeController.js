@@ -1,5 +1,6 @@
 const StudentResume = require("../models/StudentResume");
 const Student = require("../models/Student");
+const ResumeEvaluation = require("../models/ResumeEvaluation");
 const sequelize = require("../config/db");
 
 const { OpenAI } = require("openai");
@@ -9,6 +10,28 @@ const fs = require("fs");
 
 // Initialize OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+/**
+ * Helper function to save resume evaluation data to database
+ * @param {Object} evaluationData - The evaluation data to save
+ * @returns {Promise<Object>} - The saved evaluation record
+ */
+const saveResumeEvaluation = async (evaluationData) => {
+  try {
+    const evaluation = await ResumeEvaluation.create({
+      candidate_name: evaluationData.candidate_name,
+      company_name: evaluationData.company_name,
+      job_title: evaluationData.job_title,
+      resume_score: evaluationData.resume_score,
+      resume_text: evaluationData.resume_text,
+      ai_feedback: evaluationData.ai_feedback
+    });
+    return evaluation;
+  } catch (error) {
+    console.error('❌ Error saving resume evaluation:', error);
+    throw error;
+  }
+};
 
 exports.evaluateResume = async (req, res) => {
   try {
@@ -74,6 +97,7 @@ exports.evaluateResume = async (req, res) => {
         Output only in **valid JSON** format:
 
         {
+        "candidate_name": "Extract the candidate's full name from the resume",
         "score": <number between 0 and 10>,
         "verdict": "Perfect fit" | "Strong fit" | "Partial fit" | "Weak fit" | "Not eligible",
         "feedback": {
@@ -91,6 +115,7 @@ exports.evaluateResume = async (req, res) => {
         📋 EXAMPLE OUTPUT
         ──────────────────────────────
         {
+        "candidate_name": "Mst. Afia Sultana",
         "score": 8.5,
         "verdict": "Strong fit",
         "feedback": {
@@ -100,7 +125,7 @@ exports.evaluateResume = async (req, res) => {
             "responsibilities": "✅ Strong match with JD",
             "project_relevance": "⚙️ Moderate match with JD",
             "resume_quality": "✅ Professional structure with measurable outcomes",
-            "overall_feedback": "Mst. Afia Sultana is a strong candidate for Yuma Technology’s QA Automation Engineer role. Her resume demonstrates good alignment with the required QA automation skills, including Selenium, Appium, and Postman. She could improve her resume by highlighting Agile experience and more real-world project metrics."
+            "overall_feedback": "Mst. Afia Sultana is a strong candidate for Yuma Technology's QA Automation Engineer role. Her resume demonstrates good alignment with the required QA automation skills, including Selenium, Appium, and Postman. She could improve her resume by highlighting Agile experience and more real-world project metrics."
         }
         }
         ──────────────────────────────
@@ -135,6 +160,23 @@ exports.evaluateResume = async (req, res) => {
 
     // ✅ Parse JSON output directly
     const result = JSON.parse(completion.choices[0].message.content);
+
+    // 💾 Save evaluation to database
+    try {
+      const candidateName = result.candidate_name || 'Unknown Candidate';
+      await saveResumeEvaluation({
+        candidate_name: candidateName,
+        company_name: companyName,
+        job_title: jobTitle,
+        resume_score: result.score,
+        resume_text: resumeText,
+        ai_feedback: result
+      });
+      console.log('✅ Resume evaluation saved to database for:', candidateName);
+    } catch (dbError) {
+      console.error('⚠️ Failed to save evaluation to database:', dbError);
+      // Continue with response even if DB save fails
+    }
 
     // 🧹 Clean up file
     fs.unlinkSync(req.file.path);
@@ -374,6 +416,72 @@ exports.deleteResume = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Internal Server Error",
+    });
+  }
+};
+
+exports.getAllResumeEvaluations = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    const { rows: evaluations, count: total } = await ResumeEvaluation.findAndCountAll({
+      offset,
+      limit,
+      order: [['created_at', 'DESC']]
+    });
+
+    const totalPages = Math.ceil(total / limit);
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages,
+      evaluations
+    });
+  } catch (error) {
+    console.error('❌ Error fetching resume evaluations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal Server Error'
+    });
+  }
+};
+
+exports.deleteResumeEvaluation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Evaluation ID is required'
+      });
+    }
+
+    const evaluation = await ResumeEvaluation.findByPk(id);
+
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resume evaluation not found'
+      });
+    }
+
+    await evaluation.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: 'Resume evaluation deleted successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error deleting resume evaluation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal Server Error'
     });
   }
 };

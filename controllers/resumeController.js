@@ -18,7 +18,9 @@ exports.evaluateResume = async (req, res) => {
     if (!companyName || !jobTitle || !jobDescription)
       return res
         .status(400)
-        .json({ message: "Company name, job title, and description required." });
+        .json({
+          message: "Company name, job title, and description required.",
+        });
 
     // Read PDF
     const dataBuffer = fs.readFileSync(req.file.path);
@@ -105,6 +107,19 @@ exports.evaluateResume = async (req, res) => {
         Respond ONLY in valid JSON.
         `;
 
+    // 🧾 User Prompt
+    const userPrompt = `
+    Company Name: ${companyName}
+    Job Title: ${jobTitle}
+
+    Job Description:
+    ${jobDescription}
+
+    Candidate Resume:
+    ${resumeText}
+
+    Evaluate how well this candidate fits the job and respond strictly in JSON as specified.
+    `;
 
     // 🧠 OpenAI API Call
     const completion = await openai.chat.completions.create({
@@ -129,12 +144,12 @@ exports.evaluateResume = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({
-      message: "Error while evaluating resume. Ensure file is a valid PDF (max 2 MB).",
+      message:
+        "Error while evaluating resume. Ensure file is a valid PDF (max 2 MB).",
       error: error.message,
     });
   }
 };
-
 
 exports.getAllResumes = async (req, res) => {
   try {

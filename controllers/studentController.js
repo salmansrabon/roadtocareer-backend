@@ -839,6 +839,36 @@ exports.migrateStudent = async (req, res) => {
             });
         }
 
+        // ✅ Send migration notification email to student
+        try {
+            const migrationEmailBody = `
+                Dear ${student.student_name},
+
+                We are writing to inform you that your enrollment has been successfully migrated.
+
+                Migration Details:
+                -----------------
+                Student ID: ${studentId}
+                Previous Batch: ${oldBatch}
+                New Batch: ${batch_no}
+                Course: ${course.course_title}
+                ${remark ? `Remark: ${remark}` : ''}
+
+                Your attendance records and quiz answers have been reset for the new batch. You now have access to the course materials through Google Drive.
+
+                If you have any questions about this migration, please contact our support team.
+
+                Best regards,
+                Road to SDET Team
+            `;
+
+            await sendEmail(student.email, "Course Migration Notification - Road to SDET", migrationEmailBody);
+            console.log("📧 Migration notification email sent to student successfully.");
+        } catch (emailError) {
+            console.error("❌ Error sending migration notification email:", emailError);
+            // Don't fail the migration if email fails, just log the error
+        }
+
         return res.status(200).json({
             message: `Attendance and quiz answer reset, Drive access granted for ${studentId}`,
             updatedCourse: CourseId,

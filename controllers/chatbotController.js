@@ -79,18 +79,18 @@ const getDatabaseContext = async () => {
 
     ctx += `
 CONTACT INFO:
-- WhatsApp: 01782808778
-- Website: roadtocareer.net
+- WhatsApp: +8801782808778
+- Website: https://roadtocareer.net
 
 FAQ:
 - Discount: Top 5 scorers get ৳500 off next month.
 - Job Support: Mock interviews, resume reviews, job circulars.
-- Certificate: 7–8 projects required.
-- Resources: Recordings, slides, PDFs, templates.
+- Certificate: Minimum 7–8 projects required.
+- Resources: Recorded video, slide and PDF.
 - Alumni: 900+ completed, 800+ employed.
 - Instructor: Salman Rahman (Senior Software Engineer, Cefalo).
-- Regular Batch: Sat–Mon, 8:30–10:30 PM.
-- Job Holder Batch: Fri–Sat, 8:30–11:00 PM.
+- Regular Batch: Mon, Wed and Friday, 8:30–10:30 PM.
+- Job Holder Batch: Sat and Sun, 8:30–10:30 PM.
 `;
     return ctx;
   } catch (e) {

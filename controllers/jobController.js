@@ -143,7 +143,13 @@ exports.getJobs = async (req, res) => {
 
     // === Filter by deadline if latest is present ===
     let whereWithLatest = { ...where };
-    whereWithLatest.deadline = { [Op.gte]: todayStr };
+    // Include jobs with null deadline OR deadline >= today
+    whereWithLatest.deadline = {
+      [Op.or]: [
+        { [Op.gte]: todayStr },
+        { [Op.is]: null }
+      ]
+    };
 
     let finalWhere = latest ? whereWithLatest : where;
 
@@ -190,13 +196,18 @@ exports.updateJob = async (req, res) => {
     const allowedFields = [
       'companyName', 'positionName', 'workType',
       'experience', 'salary', 'level', 'companyLocation',
-      'description', 'application_url', 'deadline'
+      'description', 'application_url'
     ];
     const updates = {};
     for (const key of allowedFields) {
       if (req.body[key] !== undefined) {
         updates[key] = req.body[key];
       }
+    }
+
+    // Handle deadline separately to make it optional and prevent DB exceptions
+    if (req.body.deadline !== undefined) {
+      updates.deadline = req.body.deadline ? new Date(req.body.deadline) : null;
     }
 
     await job.update(updates);

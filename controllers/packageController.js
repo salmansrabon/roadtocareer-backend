@@ -1,6 +1,38 @@
 const Package = require("../models/Package");
 const Course = require("../models/Course");
 
+// Helper function to process installment input (handles both JSON string and comma-separated string)
+const processInstallmentInput = (installmentInput) => {
+    if (!installmentInput) return null;
+    
+    // If it's already a JSON object, return as-is
+    if (typeof installmentInput === 'object' && installmentInput !== null) {
+        return installmentInput;
+    }
+    
+    // If it's a string, check if it's JSON or comma-separated
+    if (typeof installmentInput === 'string') {
+        // Try to parse as JSON first
+        try {
+            const parsed = JSON.parse(installmentInput);
+            if (parsed && typeof parsed === 'object' && parsed.total && parsed.amount) {
+                return parsed;
+            }
+        } catch (e) {
+            // If JSON parsing fails, treat as comma-separated string
+        }
+        
+        // Handle comma-separated string
+        const amounts = installmentInput.split(',').map(amount => parseInt(amount.trim()));
+        return {
+            total: amounts.length,
+            amount: amounts
+        };
+    }
+    
+    return null;
+};
+
 exports.createPackage = async (req, res) => {
     try {
         const { courseId, packageName, studentFee, jobholderFee, installment } = req.body;
@@ -12,13 +44,16 @@ exports.createPackage = async (req, res) => {
             return res.status(400).json({ message: "A package is already created for this course." });
         }
 
+        // Process installment input (convert comma-separated string to JSON object)
+        const processedInstallment = processInstallmentInput(installment);
+
         // ✅ Create new package
         const newPackage = await Package.create({
             courseId,
             packageName,
             studentFee,
             jobholderFee,
-            installment
+            installment: processedInstallment
         });
 
         res.status(201).json({ message: "Package created successfully", package: newPackage });
@@ -56,7 +91,13 @@ exports.updatePackage = async (req, res) => {
             return res.status(404).json({ success: false, message: "Package not found" });
         }
 
+        // Process installment if it's being updated
+        if (updateData.installment) {
+            updateData.installment = processInstallmentInput(updateData.installment);
+        }
+
         await existing.update(updateData);
+
         res.status(200).json({ success: true, message: "Package updated successfully", package: existing });
     } catch (err) {
         console.error("Error updating package:", err);

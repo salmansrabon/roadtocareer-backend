@@ -30,7 +30,7 @@ const Package = sequelize.define("Package", {
         allowNull: false
     },
     installment: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.JSON,
         allowNull: false
     }
 }, {

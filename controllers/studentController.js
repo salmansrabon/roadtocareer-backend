@@ -241,7 +241,9 @@ exports.studentSignup = async (req, res) => {
                             `;
 
             await sendEmail(email, `Road to SDET- Batch ${course.batch_no} Welcome to our Course!`, studentEmailBody);
-            if(course.course_title=="Full Stack SQA"){
+            // Check if course title contains "Full Stack SQA" (case-insensitive, flexible with hyphens/spacing)
+            const courseTitle = course.course_title.toLowerCase().replace(/[-\s]+/g, ' ');
+            if(courseTitle.includes('full stack sqa')){
                 await sendEmail(email, `Road to SDET- Batch ${course.batch_no} Course payment procedure and class schedule`, paymentEmailBody, "text/html");
             }
 

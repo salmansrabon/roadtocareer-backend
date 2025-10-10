@@ -85,6 +85,96 @@ exports.addPayment = async (req, res) => {
     }
 };
 
+exports.updatePayment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const {
+            installmentNumber,
+            installmentAmount,
+            paidAmount,
+            dueAdjustmentType,
+            dueAdjustmentAmount,
+            month,
+            remarks
+        } = req.body;
+
+        // 🔹 Find existing payment record
+        const existingPayment = await Payment.findByPk(id);
+        if (!existingPayment) {
+            return res.status(404).json({ success: false, message: "Payment record not found!" });
+        }
+
+        // 🔹 Get Package Details for fee calculation
+        const packageDetails = await Package.findOne({ where: { id: existingPayment.packageId } });
+        if (!packageDetails) {
+            return res.status(404).json({ success: false, message: "Package not found!" });
+        }
+        const courseFee = parseFloat(packageDetails.studentFee);
+
+        // 🔹 Get Student Details
+        const student = await Student.findOne({ where: { StudentId: existingPayment.studentId } });
+        if (!student) {
+            return res.status(404).json({ success: false, message: "Student not found!" });
+        }
+
+        // 🔹 Get all payments for this student (excluding current one being updated)
+        const otherPayments = await Payment.findAll({ 
+            where: { 
+                studentId: existingPayment.studentId, 
+                packageId: existingPayment.packageId,
+                id: { [Op.ne]: id }
+            } 
+        });
+
+        // 🔹 Calculate Total Paid + Adjustments (excluding current payment)
+        const otherTotalPaid = otherPayments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0);
+        const otherTotalAdjustment = otherPayments.reduce((sum, payment) => sum + parseFloat(payment.dueAdjustmentAmount || 0), 0);
+
+        // 🔹 Add current payment amounts
+        const totalPaid = otherTotalPaid + parseFloat(paidAmount || 0);
+        const totalAdjustment = otherTotalAdjustment + parseFloat(dueAdjustmentAmount || 0);
+
+        // 🔹 Calculate new remaining balance
+        const remainingBalance = courseFee - totalPaid - totalAdjustment;
+
+        // 🔹 Update payment record
+        const updatedPayment = await existingPayment.update({
+            installmentNumber,
+            installmentAmount,
+            paidAmount,
+            dueAdjustmentType,
+            dueAdjustmentAmount,
+            remainingBalance: remainingBalance >= 0 ? remainingBalance : 0,
+            month,
+            remarks
+        });
+
+        // 🔹 Update Student's Due
+        await student.update({ due: remainingBalance >= 0 ? remainingBalance : 0 });
+
+        // // 🔹 Send Email Notification
+        // try {
+        //     await sendEmail(
+        //         student.email,
+        //         "Road to SDET Payment Update Notification",
+        //         `Dear ${student.student_name},\n\nYour payment record has been updated successfully.\n\nUpdated Details:\n- Installment: ${installmentNumber}\n- Amount Paid: ${paidAmount} Tk\n- Month: ${month}\n- Remaining Balance: ${remainingBalance >= 0 ? remainingBalance : 0} Tk\n\nThank you.\n\nRegards,\nRoad to SDET Team`
+        //     );
+        // } catch (emailError) {
+        //     console.error("Error sending email notification:", emailError);
+        //     // Don't fail the update if email fails
+        // }
+
+        return res.status(200).json({
+            success: true,
+            message: "Payment updated successfully!",
+            payment: updatedPayment
+        });
+
+    } catch (error) {
+        console.error("Error updating payment:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
 
 
 exports.getPaymentHistory = async (req, res) => {
@@ -370,14 +460,3 @@ exports.deletePaymentById = async (req, res) => {
         return res.status(500).json({ message: "Internal server error" });
     }
 };
-
-
-
-
-
-
-
-
-
-
-

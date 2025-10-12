@@ -46,6 +46,10 @@ const AssignmentAnswer = sequelize.define('AssignmentAnswer', {
         type: DataTypes.INTEGER,
         allowNull: true
     },
+    reviewDate: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
 
 }, {
     tableName: 'assignment_answers',

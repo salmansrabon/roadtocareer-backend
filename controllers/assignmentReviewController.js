@@ -36,6 +36,7 @@ const updateAssignmentScore = async (req, res) => {
     // 2. Update fields
     if (Score !== undefined) answer.Score = Score;
     if (Comments !== undefined) answer.Comments = Comments;
+    answer.reviewDate = new Date(); // Set review date when assignment is reviewed
 
     await answer.save();
 

@@ -1,5 +1,6 @@
 const { grantDriveAccess, removeDriveAccess } = require("../utils/googleDriveHelper");
 const { sendEmail } = require("../utils/emailHelper");
+const { getDiscordInviteForEmail } = require("../utils/discordHelper");
 const User = require("../models/User");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
@@ -46,12 +47,23 @@ exports.updateUserStatus = async (req, res) => {
                 const hashedPassword = await bcrypt.hash(newPassword, 10);
                 await user.update({ password: hashedPassword });
 
-                // ✅ Send Email
+                // ✅ Send Email with Dynamic Discord Server Link
+                const discordServerName = process.env.DISCORD_SERVER_NAME || "Road to SDET Community";
+                
+                // Get fresh Discord invite dynamically
+                const discordInvite = await getDiscordInviteForEmail();
+                const discordServerLink = discordInvite.inviteUrl;
+                
+                // Log invite status
+                if (discordInvite.isGenerated) {
+                    console.log(`✅ Generated fresh Discord invite for ${user.email}: ${discordServerLink}`);
+                } else {
+                    console.log(`⚠️ Using fallback Discord invite for ${user.email}: ${discordServerLink}`);
+                }
+                
                 await sendEmail(user.email,
                     "Road to SDET Student Enrollment Confirmation",
-                    `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 studentId: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.
-                    \nSite URL: https://www.roadtocareer.net/login
-                    \n\nRegards,\nRoad to SDET Team`
+                    `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 Student ID: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.\nSite URL: https://www.roadtocareer.net/login\n\n And also please join our Discord community with following link:\n\n🔗${discordServerName}: ${discordServerLink}\n\nIn our Discord server, you can:\n• Connect with fellow students and instructors\n• Get real-time help and support\n• Participate in study groups and discussions\n• Get career guidance and job opportunities\n• Any announcements and updates regarding classes \n\nWelcome to our community!\n\nRegards,\nRoad to SDET Team`
                 );
 
                 responseMessage += " & New password sent to email";
@@ -153,4 +165,3 @@ exports.deleteUserById = async (req, res) => {
         res.status(500).json({ message: "Internal server error." });
     }
 };
-

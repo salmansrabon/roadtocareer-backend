@@ -190,7 +190,7 @@ exports.getPaymentHistory = async (req, res) => {
             return res.status(404).json({ success: false, message: "Student not found!" });
         }
 
-        const { student_name, CourseId: courseId, package: packageName } = student;
+        const { student_name, isEnrolled, CourseId: courseId, package: packageName } = student;
 
         if (!courseId) {
             return res.status(404).json({ success: false, message: "Course ID is missing for this student!" });
@@ -227,6 +227,7 @@ exports.getPaymentHistory = async (req, res) => {
             success: true,
             studentId,
             student_name,
+            isEnrolled,
             courseId,
             packageId,
             courseFee,

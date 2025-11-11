@@ -115,3 +115,36 @@ exports.deleteReview = async (req, res) => {
         });
     }
 };
+
+// ✅ Update Multiple Review Priorities
+exports.updateReviewPriorities = async (req, res) => {
+    try {
+        const { priorities } = req.body; // Expected format: [{ id: 1, priority: 0 }, { id: 2, priority: 1 }, ...]
+
+        if (!Array.isArray(priorities) || priorities.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid priorities data"
+            });
+        }
+
+        // Update each review's priority
+        const updatePromises = priorities.map(({ id, priority }) =>
+            Review.update({ priority }, { where: { id } })
+        );
+
+        await Promise.all(updatePromises);
+
+        return res.status(200).json({
+            success: true,
+            message: "Review priorities updated successfully"
+        });
+
+    } catch (error) {
+        console.error("Error updating review priorities:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
+    }
+};

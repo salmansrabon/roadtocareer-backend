@@ -408,6 +408,8 @@ exports.getStudentById = async (req, res) => {
                 "address",
                 "university",
                 "batch_no",
+                "previous_batch_no",
+                "previous_course_id",
                 "courseTitle",
                 "package",
                 "profession",
@@ -799,6 +801,7 @@ exports.migrateStudent = async (req, res) => {
             return res.status(404).json({ message: `No student found with ID: ${studentId}` });
         }
         const oldBatch = student.batch_no;
+        const oldCourseId = student.CourseId;
 
         //Update student migration info
         await Student.update(
@@ -807,7 +810,9 @@ exports.migrateStudent = async (req, res) => {
                 remark: remark || `Migrated from batch ${oldBatch} to ${batch_no}`,
                 CourseId, // Update courseId
                 package,  // Update package
-                batch_no  // Update new batch
+                batch_no,  // Update new batch
+                previous_batch_no: oldBatch, // Save old batch to previous_batch_no
+                previous_course_id: oldCourseId // Save old course ID to previous_course_id
             },
             { where: { studentId } }
         );

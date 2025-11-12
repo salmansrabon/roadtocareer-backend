@@ -38,6 +38,14 @@ const Student = sequelize.define("Student", {
         type: DataTypes.STRING,
         allowNull: false
     },
+    previous_batch_no: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    previous_course_id: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     courseTitle: {
         type: DataTypes.STRING,
         allowNull: false

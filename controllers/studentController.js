@@ -492,7 +492,9 @@ exports.updateStudent = async (req, res) => {
             opinion,
             isEnrolled,
             certificate,
-            get_certificate
+            get_certificate,
+            previous_course_id,
+            previous_batch_no
         } = req.body; // Extract fields from request body
 
         // ✅ Find Student by StudentId
@@ -522,7 +524,9 @@ exports.updateStudent = async (req, res) => {
             opinion,
             isEnrolled,
             certificate,
-            get_certificate
+            get_certificate,
+            previous_course_id,
+            previous_batch_no
         });
 
         // ✅ If email is updated, also update it in the User table

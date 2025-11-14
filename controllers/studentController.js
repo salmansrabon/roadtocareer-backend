@@ -5,7 +5,7 @@ const User = require("../models/User");
 const Attendance = require("../models/Attendance");
 const bcrypt = require("bcryptjs");
 const { Op, Sequelize } = require("sequelize");
-const moment = require("moment");
+const moment = require("moment-timezone");
 const { sendEmail } = require("../utils/emailHelper");
 const sequelize = require("../config/db");
 const { grantDriveAccess } = require('../utils/googleDriveHelper');
@@ -574,7 +574,7 @@ exports.deleteStudentById = async (req, res) => {
 
 exports.markAttendance = async (req, res) => {
     try {
-        const { studentId, date, time } = req.body;
+        const { studentId, date, time, timezone } = req.body;
 
         if (!studentId || !date || !time) {
             return res.status(400).json({ message: "Missing required fields: studentId, date, time." });
@@ -594,14 +594,28 @@ exports.markAttendance = async (req, res) => {
             return res.status(404).json({ message: "Course not found." });
         }
 
-        // ✅ Define class time and valid attendance window (class time + 2 hours)
-        const classTime = moment(`${date} ${course.class_time}`, "DD-MM-YYYY HH:mm:ss");
-        const maxAllowedTime = classTime.clone().add(2, "hours"); // ✅ Allow up to 2 hours after class time
-        const submittedTime = moment(`${date} ${time}`, "DD-MM-YYYY hh:mm:ss A");
+        // ✅ Get student's timezone offset (in minutes) or default to Asia/Dhaka
+        const studentTimezone = timezone || 'Asia/Dhaka';
+
+        // ✅ Parse submitted time in student's timezone and convert to UTC
+        const submittedTimeLocal = moment.tz(`${date} ${time}`, "DD-MM-YYYY hh:mm:ss A", studentTimezone);
+        const submittedTimeUTC = submittedTimeLocal.clone().utc();
+
+        // ✅ Parse class time as Bangladesh time (Asia/Dhaka) and convert to UTC
+        const classTimeLocal = moment.tz(`${date} ${course.class_time}`, "DD-MM-YYYY HH:mm:ss", "Asia/Dhaka");
+        const classTimeUTC = classTimeLocal.clone().utc();
+        const maxAllowedTimeUTC = classTimeUTC.clone().add(2, "hours");
 
         // ✅ If submitted time is outside the valid window, reject the request
-        if (submittedTime.isBefore(classTime) || submittedTime.isAfter(maxAllowedTime)) {
-            return res.status(400).json({ message: "Please give attendance on class time." });
+        if (submittedTimeUTC.isBefore(classTimeUTC) || submittedTimeUTC.isAfter(maxAllowedTimeUTC)) {
+            return res.status(400).json({ 
+                message: "Please give attendance during class time (within 2 hours of class start).",
+                debug: {
+                    submittedTime: submittedTimeUTC.format(),
+                    classTime: classTimeUTC.format(),
+                    maxAllowedTime: maxAllowedTimeUTC.format()
+                }
+            });
         }
 
         // ✅ Check if Attendance Exists for Student
@@ -626,16 +640,22 @@ exports.markAttendance = async (req, res) => {
         const lastAttendanceEntry = updatedAttendanceList.length > 0 ? updatedAttendanceList[updatedAttendanceList.length - 1] : null;
 
         if (lastAttendanceEntry) {
-            const lastAttendanceTime = moment(lastAttendanceEntry.time, "DD-MM-YYYY hh:mm:ss A");
+            // Parse last attendance time (stored in student's local timezone)
+            const lastAttendanceTime = moment.tz(lastAttendanceEntry.time, "DD-MM-YYYY hh:mm:ss A", lastAttendanceEntry.timezone || 'Asia/Dhaka');
+            const lastAttendanceUTC = lastAttendanceTime.clone().utc();
 
             // ✅ If last attendance falls within class time window, reject new attendance
-            if (lastAttendanceTime.isSameOrAfter(classTime) && lastAttendanceTime.isSameOrBefore(maxAllowedTime)) {
+            if (lastAttendanceUTC.isSameOrAfter(classTimeUTC) && lastAttendanceUTC.isSameOrBefore(maxAllowedTimeUTC)) {
                 return res.status(400).json({ message: "You have already given attendance for this session." });
             }
         }
 
-        // ✅ Append New Attendance Record
-        updatedAttendanceList.push({ time: `${date} ${time}` });
+        // ✅ Append New Attendance Record with timezone info
+        updatedAttendanceList.push({ 
+            time: `${date} ${time}`,
+            timezone: studentTimezone,
+            utcTime: submittedTimeUTC.format("DD-MM-YYYY hh:mm:ss A")
+        });
 
         // ✅ Update Attendance Table
         await attendance.update({

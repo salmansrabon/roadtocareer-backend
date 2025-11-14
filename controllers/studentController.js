@@ -11,6 +11,7 @@ const sequelize = require("../config/db");
 const { grantDriveAccess } = require('../utils/googleDriveHelper');
 const AssignmentAnswer = require('../models/AssignmentAnswer');
 const {formatDate} = require('../utils/formatDate');
+const { parseAttendanceList, calculateAttendancePercentage } = require('../utils/attendanceHelper');
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -669,34 +670,11 @@ exports.getAttendance = async (req, res) => {
             return res.status(404).json({ message: "No attendance record found for this student." });
         }
 
-        // ✅ Parse `attendanceList` safely for calculation
-        let parsedAttendanceList = [];
-        try {
-            const raw = attendance.attendanceList;
+        // ✅ Parse attendance list using helper function
+        const parsedAttendanceList = parseAttendanceList(attendance.attendanceList);
 
-            if (typeof raw === "string") {
-                parsedAttendanceList = JSON.parse(raw);
-
-                // Handle possible double-stringified JSON
-                if (typeof parsedAttendanceList === "string") {
-                    parsedAttendanceList = JSON.parse(parsedAttendanceList);
-                }
-            } else if (Array.isArray(raw)) {
-                parsedAttendanceList = raw;
-            }
-
-            if (!Array.isArray(parsedAttendanceList)) {
-                parsedAttendanceList = [];
-            }
-
-        } catch (error) {
-            console.warn(`⚠️ Failed to parse attendanceList for ${studentId}:`, error.message);
-            return res.status(400).json({ message: "Error parsing attendance data!" });
-        }
-
-        // ✅ Construct and send response
-        const total = parsedAttendanceList.length;
-        const percentage = ((total / 30) * 100).toFixed(2) + "%";
+        // ✅ Calculate attendance stats using helper function
+        const { totalClicks, attendancePercentage } = calculateAttendancePercentage(parsedAttendanceList.length);
 
         return res.status(200).json({
             studentId: attendance.StudentId,
@@ -705,8 +683,8 @@ exports.getAttendance = async (req, res) => {
             courseTitle: attendance.courseTitle,
             batch_no: attendance.batch_no,
             attendanceList: attendance.attendanceList, // ✅ Keep raw string format in response
-            totalClicks: total,
-            attendancePercentage: percentage
+            totalClicks,
+            attendancePercentage
         });
 
     } catch (error) {
@@ -735,34 +713,11 @@ exports.getAllAttendance = async (req, res) => {
         });
 
         const formattedAttendanceRecords = attendanceRecords.map(record => {
-            let parsedAttendanceList = [];
+            // ✅ Parse attendance list using helper function
+            const parsedAttendanceList = parseAttendanceList(record.attendanceList);
 
-            try {
-                // ✅ Step 1: Parse only to count
-                const raw = record.attendanceList;
-
-                if (typeof raw === "string") {
-                    parsedAttendanceList = JSON.parse(raw);
-
-                    // Handle double-stringified edge case
-                    if (typeof parsedAttendanceList === "string") {
-                        parsedAttendanceList = JSON.parse(parsedAttendanceList);
-                    }
-                } else if (Array.isArray(raw)) {
-                    parsedAttendanceList = raw;
-                }
-
-                if (!Array.isArray(parsedAttendanceList)) {
-                    parsedAttendanceList = [];
-                }
-
-            } catch (err) {
-                console.warn(`⚠️ Could not parse attendanceList for ${record.StudentId}:`, err.message);
-                parsedAttendanceList = [];
-            }
-
-            const total = parsedAttendanceList.length;
-            const percentage = ((total / 30) * 100).toFixed(2) + "%";
+            // ✅ Calculate attendance stats using helper function
+            const { totalClicks, attendancePercentage } = calculateAttendancePercentage(parsedAttendanceList.length);
 
             return {
                 courseId: record.courseId,
@@ -771,8 +726,8 @@ exports.getAllAttendance = async (req, res) => {
                 StudentId: record.StudentId,
                 student_name: record.student_name,
                 attendanceList: record.attendanceList, // ✅ Keep as string in response
-                totalClicks: total,
-                attendancePercentage: percentage
+                totalClicks,
+                attendancePercentage
             };
         });
 
@@ -1017,5 +972,55 @@ exports.getCourseProgress = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+exports.deleteAttendance = async (req, res) => {
+    try {
+        const { studentId, index } = req.params;
+
+        if (!studentId || index === undefined) {
+            return res.status(400).json({ message: "Missing required fields: studentId, index." });
+        }
+
+        // ✅ Fetch Student Attendance Record
+        const attendance = await Attendance.findOne({ where: { StudentId: studentId } });
+
+        if (!attendance) {
+            return res.status(404).json({ message: "Attendance record not found." });
+        }
+
+        // ✅ Parse Attendance List using helper function
+        const attendanceList = parseAttendanceList(attendance.attendanceList);
+
+        if (attendanceList.length === 0) {
+            return res.status(400).json({ message: "Invalid attendance data format." });
+        }
+
+        // ✅ Validate Index
+        const deleteIndex = parseInt(index);
+        if (deleteIndex < 0 || deleteIndex >= attendanceList.length) {
+            return res.status(400).json({ message: "Invalid attendance index." });
+        }
+
+        // ✅ Remove Attendance Entry at Index
+        attendanceList.splice(deleteIndex, 1);
+
+        // ✅ Update Attendance Record
+        await attendance.update({
+            attendanceList: JSON.stringify(attendanceList)
+        });
+
+        // ✅ Calculate Updated Stats using helper function
+        const stats = calculateAttendancePercentage(attendanceList.length);
+
+        return res.status(200).json({
+            message: "Attendance deleted successfully!",
+            ...stats
+        });
+
+    } catch (error) {
+        console.error("Error deleting attendance:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
     }
 };

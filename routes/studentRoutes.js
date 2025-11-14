@@ -1,5 +1,5 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance  } = require("../controllers/studentController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
@@ -13,6 +13,7 @@ router.delete("/:studentId", deleteStudentById);
 router.post("/mark-attendance", markAttendance);
 router.get("/attendance/:studentId", authenticateUser, getAttendance);
 router.get("/list/attendance", authenticateUser, requireAdmin, getAllAttendance);
+router.delete("/attendance/:studentId/:index", authenticateUser, requireAdmin, deleteAttendance);
 router.post("/migrate/:studentId", authenticateUser, requireAdmin, migrateStudent);
 router.get("/companies/list", getAllCompanies);
 router.get("/course-progress/:studentId", authenticateUser, getCourseProgress);

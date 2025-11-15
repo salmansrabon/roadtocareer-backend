@@ -71,6 +71,22 @@ const Student = sequelize.define("Student", {
     experience: {
         type: DataTypes.STRING
     },
+    employment: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    skill: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    lookingForJob: {
+        type: DataTypes.ENUM('Yes', 'No'),
+        defaultValue: 'No'
+    },
+    isISTQBCertified: {
+        type: DataTypes.ENUM('Yes', 'No'),
+        defaultValue: 'No'
+    },
     company: {
         type: DataTypes.STRING
     },
@@ -96,6 +112,10 @@ const Student = sequelize.define("Student", {
         type: DataTypes.STRING,
         allowNull: true
     },
+    photo: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     isEnrolled: {
         type: DataTypes.BOOLEAN,
         defaultValue: true
@@ -111,6 +131,22 @@ const Student = sequelize.define("Student", {
     },
     github: {
         type: DataTypes.STRING
+    },
+    isMobilePublic: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
+    isEmailPublic: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
+    isLinkedInPublic: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
+    isGithubPublic: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
     },
     knowMe: {
         type: DataTypes.TEXT

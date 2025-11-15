@@ -103,6 +103,20 @@ exports.studentSignup = async (req, res) => {
         // ✅ Generate Unique Student ID
         const studentId = await generateStudentId(student_name);
 
+        // ✅ Prepare employment data if company/designation/experience provided
+        let employmentData = null;
+        if (company || designation || experience) {
+            employmentData = {
+                totalExperience: experience || "",
+                company: [{
+                    companyName: company || "",
+                    designation: designation || "",
+                    employmentDuration: "", // Empty during signup
+                    experience: experience || ""
+                }]
+            };
+        }
+
         // ✅ Insert Student Data into `students` Table
         const newStudent = await Student.create({
             salutation: salutation,
@@ -118,6 +132,7 @@ exports.studentSignup = async (req, res) => {
             profession,
             passingYear,
             experience,
+            employment: employmentData,
             company,
             designation,
             address,
@@ -371,7 +386,8 @@ exports.getAllStudents = async (req, res) => {
             attributes: [
                 "StudentId", "salutation", "student_name", "email", "mobile", "university",
                 "batch_no", "courseTitle", "package", "profession", "company", "designation",
-                "experience", "knowMe", "remark", "due", "isEnrolled", "createdAt"
+                "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "passingYear", "linkedin", "github",
+                "isMobilePublic", "isEmailPublic", "isLinkedInPublic", "isGithubPublic", "createdAt"
             ],
             include: includeClause,
             order: [["createdAt", "DESC"]],
@@ -417,12 +433,23 @@ exports.getStudentById = async (req, res) => {
                 "company",
                 "designation",
                 "experience",
+                "employment",
+                "skill",
+                "lookingForJob",
+                "isISTQBCertified",
                 "passingYear",
                 "knowMe",
                 "remark",
                 "due",
                 "isEnrolled",
                 "certificate",
+                "photo",
+                "linkedin",
+                "github",
+                "isMobilePublic",
+                "isEmailPublic",
+                "isLinkedInPublic",
+                "isGithubPublic",
                 "opinion",
                 "createdAt",
                 "get_certificate"
@@ -520,11 +547,22 @@ exports.updateStudent = async (req, res) => {
             company,
             designation,
             experience,
+            employment: req.body.employment,
+            skill: req.body.skill,
+            lookingForJob: req.body.lookingForJob,
+            isISTQBCertified: req.body.isISTQBCertified,
             knowMe,
             remark,
             opinion,
             isEnrolled,
             certificate,
+            photo: req.body.photo,
+            linkedin: req.body.linkedin,
+            github: req.body.github,
+            isMobilePublic: req.body.isMobilePublic,
+            isEmailPublic: req.body.isEmailPublic,
+            isLinkedInPublic: req.body.isLinkedInPublic,
+            isGithubPublic: req.body.isGithubPublic,
             get_certificate,
             previous_course_id,
             previous_batch_no
@@ -992,6 +1030,181 @@ exports.getCourseProgress = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+// ✅ Advanced Search for QA Talent
+exports.searchQATalent = async (req, res) => {
+    try {
+        const {
+            experience,
+            skills,
+            university,
+            company,
+            isISTQBCertified,
+            lookingForJob,
+            batch_no,
+            passingYear,
+            searchTerm,
+            page = 1,
+            limit = 10
+        } = req.query;
+
+        const pageNumber = parseInt(page) || 1;
+        const limitNumber = parseInt(limit) || 10;
+        const offset = (pageNumber - 1) * limitNumber;
+
+        let whereClause = {};
+        let orConditions = [];
+        
+        // ✅ Filter by ISTQB Certification
+        if (isISTQBCertified) {
+            whereClause.isISTQBCertified = isISTQBCertified;
+        }
+
+        // ✅ Filter by Looking for Job
+        if (lookingForJob) {
+            whereClause.lookingForJob = lookingForJob;
+        }
+
+        // ✅ Filter by University
+        if (university) {
+            whereClause.university = { [Op.like]: `%${university}%` };
+        }
+
+        // ✅ Filter by Batch Number
+        if (batch_no) {
+            whereClause.batch_no = { [Op.like]: `%${batch_no}%` };
+        }
+
+        // ✅ Filter by Passing Year
+        if (passingYear) {
+            whereClause.passingYear = { [Op.like]: `%${passingYear}%` };
+        }
+
+        // ✅ Filter by Total Experience (numeric comparison for >= minimum experience from employment.totalExperience)
+        if (experience) {
+            const minExperience = parseFloat(experience);
+            
+            if (!isNaN(minExperience)) {
+                // Only check totalExperience from employment JSON
+                whereClause[Sequelize.Op.and] = whereClause[Sequelize.Op.and] || [];
+                whereClause[Sequelize.Op.and].push(
+                    Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) >= ${minExperience})`)
+                );
+            }
+        }
+
+        // ✅ Filter by Company (search in company field and employment JSON)
+        if (company) {
+            orConditions.push(
+                { company: { [Op.like]: `%${company}%` } },
+                Sequelize.where(
+                    Sequelize.literal(`JSON_SEARCH(employment, 'one', '%${company}%')`),
+                    { [Op.ne]: null }
+                )
+            );
+        }
+
+        // ✅ Filter by Skills (search in skill JSON for both soft and technical skills)
+        // Supports both comma-separated string and JSON array format
+        if (skills) {
+            const skillsArray = skills.split(',').map(s => s.trim()).filter(s => s);
+            
+            if (skillsArray.length > 0) {
+                const skillConditions = [];
+                
+                skillsArray.forEach(skill => {
+                    // Search in soft_skill (string)
+                    skillConditions.push(
+                        Sequelize.where(
+                            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(skill, '$.soft_skill'))`),
+                            { [Op.like]: `%${skill}%` }
+                        )
+                    );
+                    
+                    // Search in technical_skill (can be string or JSON array)
+                    skillConditions.push(
+                        Sequelize.where(
+                            Sequelize.literal(`JSON_UNQUOTE(JSON_EXTRACT(skill, '$.technical_skill'))`),
+                            { [Op.like]: `%${skill}%` }
+                        )
+                    );
+                    
+                    // Search in JSON array elements for technical_skill
+                    skillConditions.push(
+                        Sequelize.where(
+                            Sequelize.literal(`JSON_SEARCH(skill, 'one', '${skill}', NULL, '$.technical_skill[*]')`),
+                            { [Op.ne]: null }
+                        )
+                    );
+                });
+                
+                orConditions.push(...skillConditions);
+            }
+        }
+
+        // ✅ General Search Term (searches across name, email, profession)
+        if (searchTerm) {
+            const searchConditions = [
+                { student_name: { [Op.like]: `%${searchTerm}%` } },
+                { email: { [Op.like]: `%${searchTerm}%` } },
+                { profession: { [Op.like]: `%${searchTerm}%` } }
+            ];
+            
+            if (orConditions.length > 0) {
+                whereClause[Op.and] = [
+                    { [Op.or]: orConditions },
+                    { [Op.or]: searchConditions }
+                ];
+            } else {
+                whereClause[Op.or] = searchConditions;
+            }
+        } else if (orConditions.length > 0) {
+            whereClause[Op.or] = orConditions;
+        }
+
+        // ✅ Get total count
+        const totalStudents = await Student.count({
+            where: whereClause,
+            include: [{
+                model: Course,
+                attributes: ["courseId", "course_title"],
+                required: false
+            }]
+        });
+
+        // ✅ Fetch filtered students
+        const students = await Student.findAll({
+            where: whereClause,
+            attributes: [
+                "StudentId", "salutation", "student_name", "email", "mobile", "university",
+                "batch_no", "courseTitle", "package", "profession", "company", "designation",
+                "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", 
+                "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "passingYear", 
+                "linkedin", "github", "isMobilePublic", "isEmailPublic", "isLinkedInPublic", 
+                "isGithubPublic", "createdAt"
+            ],
+            include: [{
+                model: Course,
+                attributes: ["courseId", "course_title"],
+                required: false
+            }],
+            order: [["createdAt", "DESC"]],
+            offset,
+            limit: limitNumber
+        });
+
+        return res.status(200).json({
+            totalStudents,
+            totalPages: Math.ceil(totalStudents / limitNumber),
+            currentPage: pageNumber,
+            students
+        });
+
+    } catch (error) {
+        console.error("Error searching QA talent:", error);
+        return res.status(500).json({ message: "Internal server error" });
     }
 };
 

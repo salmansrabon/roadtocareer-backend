@@ -386,7 +386,7 @@ exports.getAllStudents = async (req, res) => {
             attributes: [
                 "StudentId", "salutation", "student_name", "email", "mobile", "university",
                 "batch_no", "courseTitle", "package", "profession", "company", "designation",
-                "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "passingYear", "linkedin", "github",
+                "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "get_certificate", "passingYear", "linkedin", "github",
                 "isMobilePublic", "isEmailPublic", "isLinkedInPublic", "isGithubPublic", "createdAt"
             ],
             include: includeClause,
@@ -1044,7 +1044,7 @@ exports.searchQATalent = async (req, res) => {
             company,
             isISTQBCertified,
             lookingForJob,
-            batch_no,
+            verified,
             passingYear,
             searchTerm,
             page = 1,
@@ -1073,9 +1073,24 @@ exports.searchQATalent = async (req, res) => {
             whereClause.university = { [Op.like]: `%${university}%` };
         }
 
-        // ✅ Filter by Batch Number
-        if (batch_no) {
-            whereClause.batch_no = { [Op.like]: `%${batch_no}%` };
+        // ✅ Filter by Verified (certificate or get_certificate)
+        if (verified === 'Yes') {
+            whereClause[Op.or] = [
+                { certificate: { [Op.ne]: null, [Op.ne]: '' } },
+                { get_certificate: true }
+            ];
+        } else if (verified === 'No') {
+            whereClause[Op.and] = whereClause[Op.and] || [];
+            whereClause[Op.and].push({
+                [Op.or]: [
+                    { certificate: { [Op.or]: [{ [Op.is]: null }, { [Op.eq]: '' }] } },
+                    { certificate: null }
+                ],
+                [Op.or]: [
+                    { get_certificate: { [Op.or]: [false, null] } },
+                    { get_certificate: false }
+                ]
+            });
         }
 
         // ✅ Filter by Passing Year
@@ -1194,7 +1209,7 @@ exports.searchQATalent = async (req, res) => {
                 "StudentId", "salutation", "student_name", "email", "mobile", "university",
                 "batch_no", "courseTitle", "package", "profession", "company", "designation",
                 "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", 
-                "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "passingYear", 
+                "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "get_certificate", "passingYear", 
                 "linkedin", "github", "isMobilePublic", "isEmailPublic", "isLinkedInPublic", 
                 "isGithubPublic", "createdAt"
             ],
@@ -1254,9 +1269,10 @@ IMPORTANT SKILL MAPPING RULES:
 7. Always include related skills for broad terms (e.g., "Java expert" should include "Selenium,TestNG" if testing context)
 
 IMPORTANT VERIFICATION RULES:
-- When user says "verified" or "verified QA" or "verified engineers", set "hasCertificate": true (NOT isISTQBCertified)
-- "Verified" means student has completed our course and has a certificate URL
+- When user says "verified" or "verified QA" or "verified engineers", set "verified": "Yes"
+- "Verified" means student has completed our course and has a certificate (either certificate URL or get_certificate is true)
 - ISTQB certified is different from verified - it's an international certification
+- "Unverified" or "not verified" should set "verified": "No"
 
 IMPORTANT JOB SEEKING RULES:
 - When user says "available candidates", "available QA", "open to opportunities", set "lookingForJob": "Yes"
@@ -1271,8 +1287,7 @@ Return ONLY a valid JSON object with these optional fields:
   "company": "string",
   "lookingForJob": "Yes" or "No",
   "isISTQBCertified": "Yes" or "No",
-  "hasCertificate": true (for verified students with certificate URL),
-  "batch_no": "string",
+  "verified": "Yes" or "No" (for students with certificate),
   "passingYear": "string",
   "searchTerm": "string for name/email/profession search"
 }
@@ -1355,9 +1370,24 @@ Response: {"lookingForJob": "Yes"}`;
         let whereClause = {};
         let orConditions = [];
 
-        // Filter by Certificate (Verified students)
-        if (searchParams.hasCertificate === true) {
-            whereClause.certificate = { [Op.ne]: null, [Op.ne]: '' };
+        // Filter by Verified (certificate or get_certificate)
+        if (searchParams.verified === 'Yes') {
+            whereClause[Op.or] = [
+                { certificate: { [Op.ne]: null, [Op.ne]: '' } },
+                { get_certificate: true }
+            ];
+        } else if (searchParams.verified === 'No') {
+            whereClause[Op.and] = whereClause[Op.and] || [];
+            whereClause[Op.and].push({
+                [Op.or]: [
+                    { certificate: { [Op.or]: [{ [Op.is]: null }, { [Op.eq]: '' }] } },
+                    { certificate: null }
+                ],
+                [Op.or]: [
+                    { get_certificate: { [Op.or]: [false, null] } },
+                    { get_certificate: false }
+                ]
+            });
         }
 
         // Filter by ISTQB Certification
@@ -1373,11 +1403,6 @@ Response: {"lookingForJob": "Yes"}`;
         // Filter by University
         if (searchParams.university) {
             whereClause.university = { [Op.like]: `%${searchParams.university}%` };
-        }
-
-        // Filter by Batch Number
-        if (searchParams.batch_no) {
-            whereClause.batch_no = { [Op.like]: `%${searchParams.batch_no}%` };
         }
 
         // Filter by Passing Year
@@ -1468,7 +1493,7 @@ Response: {"lookingForJob": "Yes"}`;
                 "StudentId", "salutation", "student_name", "email", "mobile", "university",
                 "batch_no", "courseTitle", "package", "profession", "company", "designation",
                 "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", 
-                "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "passingYear", 
+                "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "get_certificate", "passingYear", 
                 "linkedin", "github", "isMobilePublic", "isEmailPublic", "isLinkedInPublic", 
                 "isGithubPublic", "createdAt"
             ],

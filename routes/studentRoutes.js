@@ -1,5 +1,5 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, searchQATalent, aiSearchQATalent  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, searchQATalent, aiSearchQATalent, sendContactEmail  } = require("../controllers/studentController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
@@ -10,6 +10,7 @@ router.get("/list", authenticateUser, requireAdmin, getAllStudents);
 router.get("/public-list", getAllStudents);
 router.get("/search-talent", searchQATalent);
 router.post("/ai-search", aiSearchQATalent);
+router.post("/send-contact-email", sendContactEmail);
 router.get("/:studentId", getStudentById);
 router.put("/:studentId", updateStudent);
 router.delete("/:studentId", deleteStudentById);

@@ -1038,6 +1038,7 @@ exports.searchQATalent = async (req, res) => {
     try {
         const {
             experience,
+            maxExperience,
             skills,
             university,
             company,
@@ -1082,15 +1083,27 @@ exports.searchQATalent = async (req, res) => {
             whereClause.passingYear = { [Op.like]: `%${passingYear}%` };
         }
 
-        // ✅ Filter by Total Experience (numeric comparison for >= minimum experience from employment.totalExperience)
-        if (experience) {
-            const minExperience = parseFloat(experience);
+        // ✅ Filter by Total Experience (numeric comparison for experience range from employment.totalExperience)
+        if (experience || maxExperience) {
+            const minExperience = experience ? parseFloat(experience) : null;
+            const maxExp = maxExperience ? parseFloat(maxExperience) : null;
             
-            if (!isNaN(minExperience)) {
-                // Only check totalExperience from employment JSON
-                whereClause[Sequelize.Op.and] = whereClause[Sequelize.Op.and] || [];
+            whereClause[Sequelize.Op.and] = whereClause[Sequelize.Op.and] || [];
+            
+            if (minExperience !== null && maxExp !== null && !isNaN(minExperience) && !isNaN(maxExp)) {
+                // Both min and max provided - range filter (max is exclusive, so we use < max+1)
+                whereClause[Sequelize.Op.and].push(
+                    Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) >= ${minExperience} AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) < ${maxExp + 1})`)
+                );
+            } else if (minExperience !== null && !isNaN(minExperience)) {
+                // Only minimum provided - minimum filter
                 whereClause[Sequelize.Op.and].push(
                     Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) >= ${minExperience})`)
+                );
+            } else if (maxExp !== null && !isNaN(maxExp)) {
+                // Only maximum provided - maximum filter (max is exclusive, so we use < max+1)
+                whereClause[Sequelize.Op.and].push(
+                    Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) < ${maxExp + 1})`)
                 );
             }
         }
@@ -1227,18 +1240,38 @@ exports.aiSearchQATalent = async (req, res) => {
         const systemPrompt = `You are a SQL query assistant for a QA talent database. Extract search parameters from natural language queries.
 
 Database Schema:
-- students table with fields: student_name, email, university, batch_no, passingYear, company, designation, profession, lookingForJob (enum: 'Yes'/'No'), isISTQBCertified (enum: 'Yes'/'No')
+- students table with fields: student_name, email, university, batch_no, passingYear, company, designation, profession, lookingForJob (enum: 'Yes'/'No'), isISTQBCertified (enum: 'Yes'/'No'), certificate (URL string - when present, student is "verified")
 - employment (JSON): { totalExperience: "2.5", company: [{companyName, designation, experience}] }
-- skill (JSON): { soft_skill: "text", technical_skill: ["Selenium", "Java", "Python"] }
+- skill (JSON): { soft_skill: "text", technical_skill: ["Selenium", "Java", "Python", "JavaScript", "Cypress", "Playwright", "Postman", "API Testing", "TestNG", "JUnit", "Manual Testing", "Automation Testing", "Performance Testing", "Mobile Testing", "JIRA", "SQL"] }
+
+IMPORTANT SKILL MAPPING RULES:
+1. When user says "automation expert" or "automation engineer" or "automation tester", map to: "Selenium,Playwright,Cypress,TestNG,Automation Testing"
+2. When user says "API expert" or "API testing", map to: "API Testing,Postman,RestAssured"
+3. When user says "manual tester" or "manual testing", map to: "Manual Testing,JIRA,Test Case Design"
+4. When user says "performance tester", map to: "Performance Testing,JMeter,LoadRunner"
+5. When user says "mobile tester" or "mobile testing", map to: "Mobile Testing,Appium,Android,iOS"
+6. When user says "web automation", map to: "Selenium,Playwright,Cypress"
+7. Always include related skills for broad terms (e.g., "Java expert" should include "Selenium,TestNG" if testing context)
+
+IMPORTANT VERIFICATION RULES:
+- When user says "verified" or "verified QA" or "verified engineers", set "hasCertificate": true (NOT isISTQBCertified)
+- "Verified" means student has completed our course and has a certificate URL
+- ISTQB certified is different from verified - it's an international certification
+
+IMPORTANT JOB SEEKING RULES:
+- When user says "available candidates", "available QA", "open to opportunities", set "lookingForJob": "Yes"
+- "Available" and "looking for opportunities" both mean actively seeking employment
 
 Return ONLY a valid JSON object with these optional fields:
 {
   "experience": number (minimum years),
+  "maxExperience": number (maximum years),
   "skills": "comma,separated,skills",
   "university": "string",
   "company": "string",
   "lookingForJob": "Yes" or "No",
   "isISTQBCertified": "Yes" or "No",
+  "hasCertificate": true (for verified students with certificate URL),
   "batch_no": "string",
   "passingYear": "string",
   "searchTerm": "string for name/email/profession search"
@@ -1252,7 +1285,40 @@ User: "Looking for ISTQB certified testers from Dhaka University"
 Response: {"isISTQBCertified": "Yes", "university": "Dhaka University"}
 
 User: "Find QA engineers with Selenium and Java, at least 3 years experience"
-Response: {"experience": 3, "skills": "Selenium,Java"}`;
+Response: {"experience": 3, "skills": "Selenium,Java"}
+
+User: "Show me QA with 2 to 5 years experience"
+Response: {"experience": 2, "maxExperience": 5}
+
+User: "Find testers with less than 3 years experience"
+Response: {"maxExperience": 3}
+
+User: "Find me some automation expert"
+Response: {"skills": "Selenium,Playwright,Cypress,TestNG,Automation Testing"}
+
+User: "Looking for API testing specialists"
+Response: {"skills": "API Testing,Postman,RestAssured"}
+
+User: "Find experienced manual testers"
+Response: {"skills": "Manual Testing,JIRA,Test Case Design"}
+
+User: "Need web automation engineers with 2+ years"
+Response: {"experience": 2, "skills": "Selenium,Playwright,Cypress"}
+
+User: "Find me verified QA engineers"
+Response: {"hasCertificate": true}
+
+User: "Looking for verified automation experts"
+Response: {"hasCertificate": true, "skills": "Selenium,Playwright,Cypress,TestNG,Automation Testing"}
+
+User: "Show me ISTQB certified testers"
+Response: {"isISTQBCertified": "Yes"}
+
+User: "Find available candidates"
+Response: {"lookingForJob": "Yes"}
+
+User: "Show me QA open to opportunities"
+Response: {"lookingForJob": "Yes"}`;
 
         // Call OpenAI API
         const completion = await openai.chat.completions.create({
@@ -1289,6 +1355,11 @@ Response: {"experience": 3, "skills": "Selenium,Java"}`;
         let whereClause = {};
         let orConditions = [];
 
+        // Filter by Certificate (Verified students)
+        if (searchParams.hasCertificate === true) {
+            whereClause.certificate = { [Op.ne]: null, [Op.ne]: '' };
+        }
+
         // Filter by ISTQB Certification
         if (searchParams.isISTQBCertified) {
             whereClause.isISTQBCertified = searchParams.isISTQBCertified;
@@ -1314,14 +1385,27 @@ Response: {"experience": 3, "skills": "Selenium,Java"}`;
             whereClause.passingYear = { [Op.like]: `%${searchParams.passingYear}%` };
         }
 
-        // Filter by Experience
-        if (searchParams.experience) {
-            const minExperience = parseFloat(searchParams.experience);
+        // Filter by Experience (supports range)
+        if (searchParams.experience || searchParams.maxExperience) {
+            const minExperience = searchParams.experience ? parseFloat(searchParams.experience) : null;
+            const maxExp = searchParams.maxExperience ? parseFloat(searchParams.maxExperience) : null;
             
-            if (!isNaN(minExperience)) {
-                whereClause[Sequelize.Op.and] = whereClause[Sequelize.Op.and] || [];
+            whereClause[Sequelize.Op.and] = whereClause[Sequelize.Op.and] || [];
+            
+            if (minExperience !== null && maxExp !== null && !isNaN(minExperience) && !isNaN(maxExp)) {
+                // Both min and max provided - range filter (max is exclusive, so we use < max+1)
+                whereClause[Sequelize.Op.and].push(
+                    Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) >= ${minExperience} AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) < ${maxExp + 1})`)
+                );
+            } else if (minExperience !== null && !isNaN(minExperience)) {
+                // Only minimum provided - minimum filter
                 whereClause[Sequelize.Op.and].push(
                     Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) >= ${minExperience})`)
+                );
+            } else if (maxExp !== null && !isNaN(maxExp)) {
+                // Only maximum provided - maximum filter (max is exclusive, so we use < max+1)
+                whereClause[Sequelize.Op.and].push(
+                    Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) < ${maxExp + 1})`)
                 );
             }
         }
@@ -1460,5 +1544,61 @@ exports.deleteAttendance = async (req, res) => {
     } catch (error) {
         console.error("Error deleting attendance:", error);
         return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+
+// ✅ Send Contact Email to Student (from QA Talent page)
+exports.sendContactEmail = async (req, res) => {
+    try {
+        const { studentId, subject, body } = req.body;
+
+        if (!studentId || !subject || !body) {
+            return res.status(400).json({ error: "Student ID, subject, and message body are required." });
+        }
+
+        // ✅ Fetch Student by ID
+        const student = await Student.findOne({ where: { StudentId: studentId } });
+
+        if (!student) {
+            return res.status(404).json({ error: "Student not found." });
+        }
+
+        if (!student.email) {
+            return res.status(400).json({ error: "Student does not have an email address." });
+        }
+
+        // ✅ Prepare Email Content
+        const emailSubject = subject;
+        const emailBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #1e40af;">Message from Road to Career QA Talent Portal</h2>
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <p style="white-space: pre-wrap; line-height: 1.6;">${body}</p>
+                </div>
+                <hr style="border: 1px solid #e2e8f0; margin: 20px 0;">
+                <p style="color: #64748b; font-size: 0.9rem;">
+                    This email was sent from the Road to Career QA Talent Discovery platform. 
+                    A recruiter or HR professional is interested in connecting with you.
+                </p>
+                <p style="color: #64748b; font-size: 0.9rem;">
+                    <strong>Student:</strong> ${student.student_name}<br>
+                    <strong>Batch:</strong> ${student.batch_no || 'N/A'}
+                </p>
+            </div>
+        `;
+
+        // ✅ Send Email using existing emailHelper (with HTML content type)
+        await sendEmail(student.email, emailSubject, emailBody, "text/html");
+
+        return res.status(200).json({ 
+            message: "Email sent successfully!",
+            studentName: student.student_name
+        });
+
+    } catch (error) {
+        console.error("Error sending contact email:", error);
+        return res.status(500).json({ 
+            error: error.message || "Failed to send email. Please try again." 
+        });
     }
 };

@@ -1208,6 +1208,211 @@ exports.searchQATalent = async (req, res) => {
     }
 };
 
+// ✅ AI-Powered Search using OpenAI GPT-4-mini
+exports.aiSearchQATalent = async (req, res) => {
+    try {
+        const { query } = req.body;
+
+        if (!query || query.trim().length === 0) {
+            return res.status(400).json({ error: "Search query is required" });
+        }
+
+        // Import OpenAI
+        const OpenAI = require('openai');
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
+        });
+
+        // Create a prompt for GPT-4-mini to extract search parameters
+        const systemPrompt = `You are a SQL query assistant for a QA talent database. Extract search parameters from natural language queries.
+
+Database Schema:
+- students table with fields: student_name, email, university, batch_no, passingYear, company, designation, profession, lookingForJob (enum: 'Yes'/'No'), isISTQBCertified (enum: 'Yes'/'No')
+- employment (JSON): { totalExperience: "2.5", company: [{companyName, designation, experience}] }
+- skill (JSON): { soft_skill: "text", technical_skill: ["Selenium", "Java", "Python"] }
+
+Return ONLY a valid JSON object with these optional fields:
+{
+  "experience": number (minimum years),
+  "skills": "comma,separated,skills",
+  "university": "string",
+  "company": "string",
+  "lookingForJob": "Yes" or "No",
+  "isISTQBCertified": "Yes" or "No",
+  "batch_no": "string",
+  "passingYear": "string",
+  "searchTerm": "string for name/email/profession search"
+}
+
+Examples:
+User: "Find QA with 2 years experience and Playwright expert"
+Response: {"experience": 2, "skills": "Playwright"}
+
+User: "Looking for ISTQB certified testers from Dhaka University"
+Response: {"isISTQBCertified": "Yes", "university": "Dhaka University"}
+
+User: "Find QA engineers with Selenium and Java, at least 3 years experience"
+Response: {"experience": 3, "skills": "Selenium,Java"}`;
+
+        // Call OpenAI API
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: query }
+            ],
+            temperature: 0.3,
+            max_tokens: 500
+        });
+
+        const aiResponse = completion.choices[0].message.content.trim();
+        
+        // Parse AI response
+        let searchParams;
+        try {
+            // Remove markdown code blocks if present
+            const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                searchParams = JSON.parse(jsonMatch[0]);
+            } else {
+                searchParams = JSON.parse(aiResponse);
+            }
+        } catch (parseError) {
+            console.error("Failed to parse AI response:", aiResponse);
+            return res.status(500).json({ 
+                error: "Failed to understand your query. Please try rephrasing.",
+                aiResponse 
+            });
+        }
+
+        // Build SQL where clause based on AI-extracted parameters
+        let whereClause = {};
+        let orConditions = [];
+
+        // Filter by ISTQB Certification
+        if (searchParams.isISTQBCertified) {
+            whereClause.isISTQBCertified = searchParams.isISTQBCertified;
+        }
+
+        // Filter by Looking for Job
+        if (searchParams.lookingForJob) {
+            whereClause.lookingForJob = searchParams.lookingForJob;
+        }
+
+        // Filter by University
+        if (searchParams.university) {
+            whereClause.university = { [Op.like]: `%${searchParams.university}%` };
+        }
+
+        // Filter by Batch Number
+        if (searchParams.batch_no) {
+            whereClause.batch_no = { [Op.like]: `%${searchParams.batch_no}%` };
+        }
+
+        // Filter by Passing Year
+        if (searchParams.passingYear) {
+            whereClause.passingYear = { [Op.like]: `%${searchParams.passingYear}%` };
+        }
+
+        // Filter by Experience
+        if (searchParams.experience) {
+            const minExperience = parseFloat(searchParams.experience);
+            
+            if (!isNaN(minExperience)) {
+                whereClause[Sequelize.Op.and] = whereClause[Sequelize.Op.and] || [];
+                whereClause[Sequelize.Op.and].push(
+                    Sequelize.literal(`(employment IS NOT NULL AND JSON_EXTRACT(employment, '$.totalExperience') IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) != '' AND JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) REGEXP '^[0-9]+\\\\.?[0-9]*$' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(employment, '$.totalExperience')) AS DECIMAL(10,2)) >= ${minExperience})`)
+                );
+            }
+        }
+
+        // Filter by Company
+        if (searchParams.company) {
+            orConditions.push(
+                { company: { [Op.like]: `%${searchParams.company}%` } },
+                Sequelize.where(
+                    Sequelize.literal(`JSON_SEARCH(employment, 'one', '%${searchParams.company}%')`),
+                    { [Op.ne]: null }
+                )
+            );
+        }
+
+        // Filter by Skills
+        if (searchParams.skills) {
+            const skillsArray = searchParams.skills.split(',').map(s => s.trim()).filter(s => s);
+            
+            if (skillsArray.length > 0) {
+                const skillConditions = [];
+                
+                skillsArray.forEach(skill => {
+                    skillConditions.push(
+                        Sequelize.where(
+                            Sequelize.literal(`JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`),
+                            { [Op.ne]: null }
+                        )
+                    );
+                });
+                
+                orConditions.push(...skillConditions);
+            }
+        }
+
+        // Filter by Search Term (name, email, profession)
+        if (searchParams.searchTerm) {
+            const searchConditions = [
+                { student_name: { [Op.like]: `%${searchParams.searchTerm}%` } },
+                { email: { [Op.like]: `%${searchParams.searchTerm}%` } },
+                { profession: { [Op.like]: `%${searchParams.searchTerm}%` } }
+            ];
+            
+            if (orConditions.length > 0) {
+                whereClause[Op.and] = [
+                    { [Op.or]: orConditions },
+                    { [Op.or]: searchConditions }
+                ];
+            } else {
+                whereClause[Op.or] = searchConditions;
+            }
+        } else if (orConditions.length > 0) {
+            whereClause[Op.or] = orConditions;
+        }
+
+        // Fetch matching students
+        const students = await Student.findAll({
+            where: whereClause,
+            attributes: [
+                "StudentId", "salutation", "student_name", "email", "mobile", "university",
+                "batch_no", "courseTitle", "package", "profession", "company", "designation",
+                "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", 
+                "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "passingYear", 
+                "linkedin", "github", "isMobilePublic", "isEmailPublic", "isLinkedInPublic", 
+                "isGithubPublic", "createdAt"
+            ],
+            include: [{
+                model: Course,
+                attributes: ["courseId", "course_title"],
+                required: false
+            }],
+            order: [["createdAt", "DESC"]],
+            limit: 100 // Limit AI search results
+        });
+
+        return res.status(200).json({
+            totalStudents: students.length,
+            students,
+            searchParams, // Return extracted parameters for debugging
+            originalQuery: query
+        });
+
+    } catch (error) {
+        console.error("Error in AI search:", error);
+        return res.status(500).json({ 
+            error: "AI search failed. Please try again or use manual filters.",
+            details: error.message 
+        });
+    }
+};
+
 exports.deleteAttendance = async (req, res) => {
     try {
         const { studentId, index } = req.params;

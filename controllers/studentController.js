@@ -1399,6 +1399,20 @@ Response: {"lookingForJob": "Yes"}`;
             });
         }
 
+            // Detect requested count (e.g., "find me 10 best QA" or explicit count in AI JSON)
+            let requestedCount = null;
+            if (searchParams.count && Number.isInteger(searchParams.count)) {
+                requestedCount = parseInt(searchParams.count);
+            } else if (searchParams.count && !isNaN(parseInt(searchParams.count))) {
+                requestedCount = parseInt(searchParams.count);
+            } else if (typeof query === 'string') {
+                const countRegex = /(?:find|show|get|give me|need|list)\s+(?:me\s+)?(\d{1,3})\s+(?:best|top)?\s*(?:qa|testers|candidates|profiles|students|results|people|engineers)?/i;
+                const m = query.match(countRegex);
+                if (m && m[1]) {
+                    requestedCount = parseInt(m[1]);
+                }
+            }
+
         // Handle "find best" candidates with special ranking algorithm
         if (searchParams.findBest) {
             // Fetch all students for ranking (limit to reasonable number for performance)
@@ -1416,7 +1430,7 @@ Response: {"lookingForJob": "Yes"}`;
                     attributes: ["courseId", "course_title"],
                     required: false
                 }],
-                limit: 500 // Fetch more students for ranking
+                    limit: 500 // Fetch more students for ranking
             });
 
             // Calculate scores for each student
@@ -1462,10 +1476,12 @@ Response: {"lookingForJob": "Yes"}`;
                 };
             });
 
-            // Sort by quality score (descending) and return top 50
+            // Sort by quality score (descending) and return top N (respect requestedCount if provided)
+            // Default to top 15 when HR does not specify a count
+            const maxReturn = requestedCount && requestedCount > 0 ? requestedCount : 15;
             const topStudents = scoredStudents
                 .sort((a, b) => b.qualityScore - a.qualityScore)
-                .slice(0, 50);
+                .slice(0, maxReturn);
 
             return res.status(200).json({
                 totalStudents: topStudents.length,
@@ -1473,6 +1489,7 @@ Response: {"lookingForJob": "Yes"}`;
                 searchParams,
                 originalQuery: query,
                 isBestSearch: true,
+                requestedCount: requestedCount || null,
                 rankingCriteria: {
                     verified: "50 points",
                     istqbCertified: "30 points", 
@@ -1624,6 +1641,9 @@ Response: {"lookingForJob": "Yes"}`;
             whereClause[Op.or] = orConditions;
         }
 
+        // Fetch matching students (respect requestedCount if present)
+        // Default to 15 results when the user did not request a specific count
+        const queryLimit = requestedCount && requestedCount > 0 ? requestedCount : 15;
         // Fetch matching students
         const students = await Student.findAll({
             where: whereClause,
@@ -1641,7 +1661,7 @@ Response: {"lookingForJob": "Yes"}`;
                 required: false
             }],
             order: [["get_certificate", "DESC"], ["createdAt", "DESC"]],
-            limit: 100 // Limit AI search results
+            limit: queryLimit // Limit AI search results (respect requested count)
         });
 
         // If no exact matches found, return best matching profiles with fallback logic
@@ -1735,10 +1755,12 @@ Response: {"lookingForJob": "Yes"}`;
                 };
             });
 
-            // Sort by quality score (descending) and return top 20 best matches
+            // Sort by quality score (descending) and return top N best matches (respect requestedCount)
+            // Default fallback top results to 15 when no count is requested
+            const fallbackMax = requestedCount && requestedCount > 0 ? requestedCount : 15;
             const bestMatchingStudents = scoredStudents
                 .sort((a, b) => b.qualityScore - a.qualityScore)
-                .slice(0, 20);
+                .slice(0, fallbackMax);
 
             return res.status(200).json({
                 totalStudents: bestMatchingStudents.length,
@@ -1746,15 +1768,17 @@ Response: {"lookingForJob": "Yes"}`;
                 searchParams,
                 originalQuery: query,
                 isFallbackSearch: true,
+                requestedCount: requestedCount || null,
                 aiMessage: "Sorry, I didn't find exactly what you are looking for, but here are some best profile you might choose."
             });
         }
 
-        return res.status(200).json({
+            return res.status(200).json({
             totalStudents: students.length,
             students,
             searchParams, // Return extracted parameters for debugging
             originalQuery: query,
+            requestedCount: requestedCount || null,
             aiMessage: students.length > 0 ? "Here are the top results based on your query." : "No matching profiles found."
         });
 

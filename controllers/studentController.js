@@ -390,7 +390,7 @@ exports.getAllStudents = async (req, res) => {
                 "isMobilePublic", "isEmailPublic", "isLinkedInPublic", "isGithubPublic", "createdAt"
             ],
             include: includeClause,
-            order: [["createdAt", "DESC"]],
+            order: [["get_certificate", "DESC"], ["createdAt", "DESC"]],
             offset,
             limit: limitNumber
         });
@@ -1220,7 +1220,7 @@ exports.searchQATalent = async (req, res) => {
                 attributes: ["courseId", "course_title"],
                 required: false
             }],
-            order: [["createdAt", "DESC"]],
+            order: [["get_certificate", "DESC"], ["createdAt", "DESC"]],
             offset,
             limit: limitNumber
         });
@@ -1254,21 +1254,45 @@ exports.aiSearchQATalent = async (req, res) => {
         });
 
         // Create a prompt for GPT-4-mini to extract search parameters
-        const systemPrompt = `You are a SQL query assistant for a QA talent database. Extract search parameters from natural language queries.
+        const systemPrompt = `You are an intelligent QA talent search assistant. Your goal is to find the BEST matching candidates even when exact skills aren't available. Always return relevant results by using fallback skills and related technologies.
+
+CRITICAL "BEST" CANDIDATE DETECTION:
+When users ask for "best", "top", "elite", "premium", "highest quality", "most qualified", "star", "excellent", or similar superlatives, set "findBest": true. This triggers a special ranking algorithm that prioritizes:
+1. VERIFIED students (get_certificate = true) - HIGHEST priority
+2. ISTQB certified professionals - HIGH priority  
+3. Students with the most technical skills - MEDIUM priority
+4. Higher experience levels - MEDIUM priority
+5. Currently enrolled/active students - LOW priority
 
 Database Schema:
 - students table with fields: student_name, email, university, batch_no, passingYear, company, designation, profession, lookingForJob (enum: 'Yes'/'No'), isISTQBCertified (enum: 'Yes'/'No'), certificate (URL string - when present, student is "verified")
 - employment (JSON): { totalExperience: "2.5", company: [{companyName, designation, experience}] }
-- skill (JSON): { soft_skill: "text", technical_skill: ["Selenium", "Java", "Python", "JavaScript", "Cypress", "Playwright", "Postman", "API Testing", "TestNG", "JUnit", "Manual Testing", "Automation Testing", "Performance Testing", "Mobile Testing", "JIRA", "SQL"] }
+- skill (JSON): { soft_skill: "text", technical_skill: ["Selenium", "Java", "Python", "JavaScript", "TypeScript", "C#", "API Testing", "REST API", "SOAP API", "Postman","Newman", "SQL", "MySQL", "PostgreSQL", "MongoDB", "Cypress", "Playwright", "TestNG", "JUnit", "Pytest", "Jest", "Mocha", "JIRA", "TestRail", "Zephyr", "Jenkins", "Git", "GitHub", "GitLab", "Appium", "Mobile Testing", "Android Testing", "iOS Testing", "Performance Testing", "Load Testing", "Stress Testing", "JMeter", "LoadRunner", "Gatling", "Cucumber", "BDD", "TDD", "Agile", "Scrum", "Manual Testing", "Regression Testing", "Smoke Testing", "Sanity Testing", "Integration Testing", "UAT", "Exploratory Testing", "Usability Testing", "Compatibility Testing", "Cross-browser Testing", "Security Testing", "Accessibility Testing", "ETL Testing", "Database Testing", "Visual Testing","Figma", "Contract Testing", "Session-based Testing", "Risk-based Testing", "Test Data Management", "Localization Testing", "Internationalization Testing", "A/B Testing", "Chaos Engineering", "Test Cases", "Test Plan", "Test Estimation", "Acceptance Criteria", "Bug Lifecycle", "Bug Triage", "Root Cause Analysis", "Katalon Studio", "Robot Framework", "SoapUI", "REST Assured", "Docker", "Kubernetes", "AWS", "Azure", "CI/CD", "Maven", "Gradle", "Automation Testing", "Linux","Ubuntu"] }
+
+CRITICAL FALLBACK RULES - ALWAYS FIND CANDIDATES:
+1. **Security Testing**: If no exact match, use: "BurpSuite, OWASP, ZAP, Nessus, Wireshark, Penetration Testing, Ethical Hacking"
+2. **PyTest/Python Testing**: If no PyTest, use: "Python, Selenium, API Testing, Automation Testing"
+3. **Performance Testing**: If no exact match, use: "JMeter, LoadRunner, Gatling, Load Testing, Stress Testing"
+4. **API Testing**: If no exact match, use: "Postman, REST API, SOAP API, REST Assured, Newman"
+5. **Mobile Testing**: If no exact match, use: "Appium, Android Testing, iOS Testing, Mobile Testing"
+6. **Database Testing**: If no exact match, use: "SQL, MySQL, PostgreSQL, MongoDB, ETL Testing"
+7. **Cloud Testing**: If no exact match, use: "AWS, Azure, Docker, Kubernetes"
+8. **CI/CD**: If no exact match, use: "Jenkins, Git, GitHub, GitLab, Docker"
+9. **Frontend Testing**: If no exact match, use: "JavaScript, TypeScript, Selenium, Cypress, Playwright"
+10. **Backend Testing**: If no exact match, use: "API Testing, SQL, Java, Python, C#"
 
 IMPORTANT SKILL MAPPING RULES:
 1. When user says "automation expert" or "automation engineer" or "automation tester", map to: "Selenium,Playwright,Cypress,TestNG,Automation Testing"
-2. When user says "API expert" or "API testing", map to: "API Testing,Postman,RestAssured"
+2. When user says "API expert" or "API testing", map to: "API Testing,Postman,RestAssured" (fallback: "REST API,SOAP API,Newman")
 3. When user says "manual tester" or "manual testing", map to: "Manual Testing,JIRA,Test Case Design"
-4. When user says "performance tester", map to: "Performance Testing,JMeter,LoadRunner"
-5. When user says "mobile tester" or "mobile testing", map to: "Mobile Testing,Appium,Android,iOS"
+4. When user says "performance tester", map to: "Performance Testing,JMeter,LoadRunner" (fallback: "Load Testing,Stress Testing,Gatling")
+5. When user says "mobile tester" or "mobile testing", map to: "Mobile Testing,Appium,Android,iOS" (fallback: "Android Testing,iOS Testing")
 6. When user says "web automation", map to: "Selenium,Playwright,Cypress"
-7. Always include related skills for broad terms (e.g., "Java expert" should include "Selenium,TestNG" if testing context)
+7. When user says "security testing", map to: "Security Testing" (fallback: "BurpSuite,OWASP,ZAP,Penetration Testing")
+8. When user says "python testing" or "pytest", map to: "Pytest" (fallback: "Python,Selenium,API Testing")
+9. When user says "java testing", map to: "TestNG,JUnit" (fallback: "Java,Selenium,API Testing")
+10. When user says "javascript testing", map to: "Jest,Mocha" (fallback: "JavaScript,Cypress,Playwright")
+11. Always include related skills for broad terms (e.g., "Java expert" should include "Selenium,TestNG" if testing context)
 
 IMPORTANT VERIFICATION RULES:
 - When user says "verified" or "verified QA" or "verified engineers", set "verified": "Yes"
@@ -1280,11 +1304,29 @@ IMPORTANT JOB SEEKING RULES:
 - When user says "available candidates", "available QA", "open to opportunities", set "lookingForJob": "Yes"
 - "Available" and "looking for opportunities" both mean actively seeking employment
 
+"BEST" CANDIDATE EXAMPLES:
+User: "Find the best QA in this portal"
+Response: {"findBest": true}
+
+User: "Show me top QA engineers"
+Response: {"findBest": true}
+
+User: "Who are the most qualified testers here?"
+Response: {"findBest": true}
+
+User: "Find elite QA professionals"
+Response: {"findBest": true}
+
+User: "Show me premium QA talent"
+Response: {"findBest": true}
+
 Return ONLY a valid JSON object with these optional fields:
 {
+  "findBest": true or false,
   "experience": number (minimum years),
   "maxExperience": number (maximum years),
   "skills": "comma,separated,skills",
+  "fallbackSkills": "comma,separated,fallback,skills",
   "university": "string",
   "company": "string",
   "lookingForJob": "Yes" or "No",
@@ -1294,47 +1336,36 @@ Return ONLY a valid JSON object with these optional fields:
   "searchTerm": "string for name/email/profession search"
 }
 
-Examples:
+FALLBACK EXAMPLES:
+User: "Find QA who is very good at security testing"
+Response: {"skills": "Security Testing", "fallbackSkills": "BurpSuite,OWASP,ZAP,Penetration Testing,Ethical Hacking"}
+
+User: "Find me who is good at PyTest"
+Response: {"skills": "Pytest", "fallbackSkills": "Python,Selenium,API Testing,Automation Testing"}
+
+User: "Looking for performance testing experts"
+Response: {"skills": "Performance Testing,JMeter,LoadRunner", "fallbackSkills": "Load Testing,Stress Testing,Gatling"}
+
+User: "Need mobile testing specialists"
+Response: {"skills": "Mobile Testing,Appium", "fallbackSkills": "Android Testing,iOS Testing"}
+
+User: "Find database testing experts"
+Response: {"skills": "Database Testing", "fallbackSkills": "SQL,MySQL,PostgreSQL,ETL Testing"}
+
+User: "Looking for CI/CD experts"
+Response: {"skills": "CI/CD,Jenkins", "fallbackSkills": "Git,GitHub,Docker,Kubernetes"}
+
+REGULAR EXAMPLES:
 User: "Find QA with 2 years experience and Playwright expert"
 Response: {"experience": 2, "skills": "Playwright"}
 
 User: "Looking for ISTQB certified testers from Dhaka University"
 Response: {"isISTQBCertified": "Yes", "university": "Dhaka University"}
 
-User: "Find QA engineers with Selenium and Java, at least 3 years experience"
-Response: {"experience": 3, "skills": "Selenium,Java"}
-
-User: "Show me QA with 2 to 5 years experience"
-Response: {"experience": 2, "maxExperience": 5}
-
-User: "Find testers with less than 3 years experience"
-Response: {"maxExperience": 3}
-
 User: "Find me some automation expert"
 Response: {"skills": "Selenium,Playwright,Cypress,TestNG,Automation Testing"}
 
-User: "Looking for API testing specialists"
-Response: {"skills": "API Testing,Postman,RestAssured"}
-
-User: "Find experienced manual testers"
-Response: {"skills": "Manual Testing,JIRA,Test Case Design"}
-
-User: "Need web automation engineers with 2+ years"
-Response: {"experience": 2, "skills": "Selenium,Playwright,Cypress"}
-
-User: "Find me verified QA engineers"
-Response: {"hasCertificate": true}
-
-User: "Looking for verified automation experts"
-Response: {"hasCertificate": true, "skills": "Selenium,Playwright,Cypress,TestNG,Automation Testing"}
-
-User: "Show me ISTQB certified testers"
-Response: {"isISTQBCertified": "Yes"}
-
 User: "Find available candidates"
-Response: {"lookingForJob": "Yes"}
-
-User: "Show me QA open to opportunities"
 Response: {"lookingForJob": "Yes"}`;
 
         // Call OpenAI API
@@ -1365,6 +1396,90 @@ Response: {"lookingForJob": "Yes"}`;
             return res.status(500).json({ 
                 error: "Failed to understand your query. Please try rephrasing.",
                 aiResponse 
+            });
+        }
+
+        // Handle "find best" candidates with special ranking algorithm
+        if (searchParams.findBest) {
+            // Fetch all students for ranking (limit to reasonable number for performance)
+            const allStudents = await Student.findAll({
+                attributes: [
+                    "StudentId", "salutation", "student_name", "email", "mobile", "university",
+                    "batch_no", "courseTitle", "package", "profession", "company", "designation",
+                    "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", 
+                    "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "get_certificate", "passingYear", 
+                    "linkedin", "github", "isMobilePublic", "isEmailPublic", "isLinkedInPublic", 
+                    "isGithubPublic", "createdAt"
+                ],
+                include: [{
+                    model: Course,
+                    attributes: ["courseId", "course_title"],
+                    required: false
+                }],
+                limit: 500 // Fetch more students for ranking
+            });
+
+            // Calculate scores for each student
+            const scoredStudents = allStudents.map(student => {
+                let score = 0;
+                const studentData = student.toJSON();
+
+                // VERIFIED status - HIGHEST priority (+50 points)
+                if (studentData.get_certificate === true || (studentData.certificate && studentData.certificate.trim() !== '')) {
+                    score += 50;
+                }
+
+                // ISTQB certification - HIGH priority (+30 points)
+                if (studentData.isISTQBCertified === 'Yes') {
+                    score += 30;
+                }
+
+                // Number of technical skills - MEDIUM priority (+1 point per skill, max 20)
+                if (studentData.skill && typeof studentData.skill === 'object' && studentData.skill.technical_skill) {
+                    let skillCount = 0;
+                    if (Array.isArray(studentData.skill.technical_skill)) {
+                        skillCount = studentData.skill.technical_skill.length;
+                    } else if (typeof studentData.skill.technical_skill === 'string') {
+                        skillCount = studentData.skill.technical_skill.split(',').length;
+                    }
+                    score += Math.min(skillCount, 20); // Cap at 20 points
+                }
+
+                // Experience level - MEDIUM priority (+1 point per year, max 10)
+                if (studentData.employment && typeof studentData.employment === 'object' && studentData.employment.totalExperience) {
+                    const experience = parseFloat(studentData.employment.totalExperience) || 0;
+                    score += Math.min(Math.floor(experience), 10); // Cap at 10 points
+                }
+
+                // Currently enrolled - LOW priority (+5 points)
+                if (studentData.isEnrolled === true || studentData.isEnrolled === 1) {
+                    score += 5;
+                }
+
+                return {
+                    ...studentData,
+                    qualityScore: score
+                };
+            });
+
+            // Sort by quality score (descending) and return top 50
+            const topStudents = scoredStudents
+                .sort((a, b) => b.qualityScore - a.qualityScore)
+                .slice(0, 50);
+
+            return res.status(200).json({
+                totalStudents: topStudents.length,
+                students: topStudents,
+                searchParams,
+                originalQuery: query,
+                isBestSearch: true,
+                rankingCriteria: {
+                    verified: "50 points",
+                    istqbCertified: "30 points", 
+                    skillsCount: "1 point per skill (max 20)",
+                    experienceYears: "1 point per year (max 10)",
+                    enrolled: "5 points"
+                }
             });
         }
 
@@ -1448,7 +1563,7 @@ Response: {"lookingForJob": "Yes"}`;
             );
         }
 
-        // Filter by Skills
+        // Filter by Skills (with fallback logic)
         if (searchParams.skills) {
             const skillsArray = searchParams.skills.split(',').map(s => s.trim()).filter(s => s);
             
@@ -1465,6 +1580,27 @@ Response: {"lookingForJob": "Yes"}`;
                 });
                 
                 orConditions.push(...skillConditions);
+            }
+        }
+
+        // Add fallback skills if provided (for when primary skills don't match)
+        if (searchParams.fallbackSkills) {
+            const fallbackSkillsArray = searchParams.fallbackSkills.split(',').map(s => s.trim()).filter(s => s);
+            
+            if (fallbackSkillsArray.length > 0) {
+                const fallbackSkillConditions = [];
+                
+                fallbackSkillsArray.forEach(skill => {
+                    fallbackSkillConditions.push(
+                        Sequelize.where(
+                            Sequelize.literal(`JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`),
+                            { [Op.ne]: null }
+                        )
+                    );
+                });
+                
+                // Add fallback skills as OR conditions (they will be used if primary skills don't match)
+                orConditions.push(...fallbackSkillConditions);
             }
         }
 
@@ -1504,15 +1640,122 @@ Response: {"lookingForJob": "Yes"}`;
                 attributes: ["courseId", "course_title"],
                 required: false
             }],
-            order: [["createdAt", "DESC"]],
+            order: [["get_certificate", "DESC"], ["createdAt", "DESC"]],
             limit: 100 // Limit AI search results
         });
+
+        // If no exact matches found, return best matching profiles with fallback logic
+        if (students.length === 0 && (searchParams.skills || searchParams.fallbackSkills)) {
+            // Fetch all students for ranking with skill relevance
+            const allStudents = await Student.findAll({
+                attributes: [
+                    "StudentId", "salutation", "student_name", "email", "mobile", "university",
+                    "batch_no", "courseTitle", "package", "profession", "company", "designation",
+                    "experience", "employment", "skill", "lookingForJob", "isISTQBCertified", 
+                    "knowMe", "remark", "due", "isEnrolled", "photo", "certificate", "get_certificate", "passingYear", 
+                    "linkedin", "github", "isMobilePublic", "isEmailPublic", "isLinkedInPublic", 
+                    "isGithubPublic", "createdAt"
+                ],
+                include: [{
+                    model: Course,
+                    attributes: ["courseId", "course_title"],
+                    required: false
+                }],
+                limit: 500 // Fetch more students for ranking
+            });
+
+            // Calculate scores for each student with skill relevance
+            const scoredStudents = allStudents.map(student => {
+                let score = 0;
+                let skillRelevance = 0;
+                const studentData = student.toJSON();
+
+                // VERIFIED status - HIGHEST priority (+50 points)
+                if (studentData.get_certificate === true || (studentData.certificate && studentData.certificate.trim() !== '')) {
+                    score += 50;
+                }
+
+                // ISTQB certification - HIGH priority (+30 points)
+                if (studentData.isISTQBCertified === 'Yes') {
+                    score += 30;
+                }
+
+                // Skill relevance - check if student has requested or fallback skills
+                if (studentData.skill && typeof studentData.skill === 'object' && studentData.skill.technical_skill) {
+                    const studentSkills = Array.isArray(studentData.skill.technical_skill) 
+                        ? studentData.skill.technical_skill 
+                        : studentData.skill.technical_skill.split(',').map(s => s.trim());
+
+                    const requestedSkills = searchParams.skills ? searchParams.skills.split(',').map(s => s.trim()) : [];
+                    const fallbackSkills = searchParams.fallbackSkills ? searchParams.fallbackSkills.split(',').map(s => s.trim()) : [];
+
+                    // Check for exact skill matches (higher weight)
+                    requestedSkills.forEach(skill => {
+                        if (studentSkills.some(s => s.toLowerCase().includes(skill.toLowerCase()))) {
+                            skillRelevance += 10; // Exact match gets 10 points
+                        }
+                    });
+
+                    // Check for fallback skill matches (lower weight)
+                    fallbackSkills.forEach(skill => {
+                        if (studentSkills.some(s => s.toLowerCase().includes(skill.toLowerCase()))) {
+                            skillRelevance += 5; // Fallback match gets 5 points
+                        }
+                    });
+
+                    score += skillRelevance;
+                }
+
+                // Number of technical skills - MEDIUM priority (+1 point per skill, max 20)
+                if (studentData.skill && typeof studentData.skill === 'object' && studentData.skill.technical_skill) {
+                    let skillCount = 0;
+                    if (Array.isArray(studentData.skill.technical_skill)) {
+                        skillCount = studentData.skill.technical_skill.length;
+                    } else if (typeof studentData.skill.technical_skill === 'string') {
+                        skillCount = studentData.skill.technical_skill.split(',').length;
+                    }
+                    score += Math.min(skillCount, 20); // Cap at 20 points
+                }
+
+                // Experience level - MEDIUM priority (+1 point per year, max 10)
+                if (studentData.employment && typeof studentData.employment === 'object' && studentData.employment.totalExperience) {
+                    const experience = parseFloat(studentData.employment.totalExperience) || 0;
+                    score += Math.min(Math.floor(experience), 10); // Cap at 10 points
+                }
+
+                // Currently enrolled - LOW priority (+5 points)
+                if (studentData.isEnrolled === true || studentData.isEnrolled === 1) {
+                    score += 5;
+                }
+
+                return {
+                    ...studentData,
+                    qualityScore: score,
+                    skillRelevance: skillRelevance
+                };
+            });
+
+            // Sort by quality score (descending) and return top 20 best matches
+            const bestMatchingStudents = scoredStudents
+                .sort((a, b) => b.qualityScore - a.qualityScore)
+                .slice(0, 20);
+
+            return res.status(200).json({
+                totalStudents: bestMatchingStudents.length,
+                students: bestMatchingStudents,
+                searchParams,
+                originalQuery: query,
+                isFallbackSearch: true,
+                aiMessage: "Sorry, I didn't find exactly what you are looking for, but here are some best profile you might choose."
+            });
+        }
 
         return res.status(200).json({
             totalStudents: students.length,
             students,
             searchParams, // Return extracted parameters for debugging
-            originalQuery: query
+            originalQuery: query,
+            aiMessage: students.length > 0 ? "Here are the top results based on your query." : "No matching profiles found."
         });
 
     } catch (error) {

@@ -1075,24 +1075,13 @@ exports.searchQATalent = async (req, res) => {
             whereClause.university = { [Op.like]: `%${university}%` };
         }
 
-        // ✅ Filter by Verified (certificate or get_certificate)
+        // ✅ Filter by Verified (use `get_certificate` flag only)
         if (verified === 'Yes') {
-            whereClause[Op.or] = [
-                { certificate: { [Op.ne]: null, [Op.ne]: '' } },
-                { get_certificate: true }
-            ];
+            // Only select students where get_certificate is true
+            whereClause.get_certificate = true;
         } else if (verified === 'No') {
-            whereClause[Op.and] = whereClause[Op.and] || [];
-            whereClause[Op.and].push({
-                [Op.or]: [
-                    { certificate: { [Op.or]: [{ [Op.is]: null }, { [Op.eq]: '' }] } },
-                    { certificate: null }
-                ],
-                [Op.or]: [
-                    { get_certificate: { [Op.or]: [false, null] } },
-                    { get_certificate: false }
-                ]
-            });
+            // Explicitly filter out students with get_certificate true
+            whereClause.get_certificate = { [Op.or]: [false, null] };
         }
 
         // ✅ Filter by Passing Year
@@ -1405,12 +1394,42 @@ Response: {"lookingForJob": "Yes"}`;
                 requestedCount = parseInt(searchParams.count);
             } else if (searchParams.count && !isNaN(parseInt(searchParams.count))) {
                 requestedCount = parseInt(searchParams.count);
+            } else if (searchParams.count && typeof searchParams.count === 'string') {
+                // Support spelled-out counts returned by the AI (e.g., "three")
+                const wordToNum = {
+                    one: 1, two: 2, three: 3, four: 4, five: 5,
+                    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+                    eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+                    sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20
+                };
+                const lowered = searchParams.count.toLowerCase().trim();
+                if (wordToNum[lowered]) requestedCount = wordToNum[lowered];
             } else if (typeof query === 'string') {
                 const countRegex = /(?:find|show|get|give me|need|list)\s+(?:me\s+)?(\d{1,3})\s+(?:best|top)?\s*(?:qa|testers|candidates|profiles|students|results|people|engineers)?/i;
                 const m = query.match(countRegex);
                 if (m && m[1]) {
                     requestedCount = parseInt(m[1]);
                 }
+                // Also support spelled-out numbers in the natural language query (e.g., "find me three best")
+                if (!requestedCount) {
+                    const wordToNum = {
+                        one: 1, two: 2, three: 3, four: 4, five: 5,
+                        six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+                        eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+                        sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20
+                    };
+                    const wordRegex = new RegExp('(?:find|show|get|give me|need|list)\\s+(?:me\\s+)?(' + Object.keys(wordToNum).join('|') + ')\\s+(?:best|top)?', 'i');
+                    const wm = query.match(wordRegex);
+                    if (wm && wm[1]) {
+                        const w = wm[1].toLowerCase();
+                        if (wordToNum[w]) requestedCount = wordToNum[w];
+                    }
+                }
+            }
+
+            // If user asked for "best" without an explicit count, interpret it as 1 (the single best candidate)
+            if (!requestedCount && searchParams.findBest) {
+                requestedCount = 1;
             }
 
         // Handle "find best" candidates with special ranking algorithm
@@ -1439,7 +1458,8 @@ Response: {"lookingForJob": "Yes"}`;
                 const studentData = student.toJSON();
 
                 // VERIFIED status - HIGHEST priority (+50 points)
-                if (studentData.get_certificate === true || (studentData.certificate && studentData.certificate.trim() !== '')) {
+                // Only treat as verified when `get_certificate` is strictly true (or numeric 1)
+                if (studentData.get_certificate === true || studentData.get_certificate === 1) {
                     score += 50;
                 }
 
@@ -1504,24 +1524,11 @@ Response: {"lookingForJob": "Yes"}`;
         let whereClause = {};
         let orConditions = [];
 
-        // Filter by Verified (certificate or get_certificate)
+        // Filter by Verified (use `get_certificate` flag only)
         if (searchParams.verified === 'Yes') {
-            whereClause[Op.or] = [
-                { certificate: { [Op.ne]: null, [Op.ne]: '' } },
-                { get_certificate: true }
-            ];
+            whereClause.get_certificate = true;
         } else if (searchParams.verified === 'No') {
-            whereClause[Op.and] = whereClause[Op.and] || [];
-            whereClause[Op.and].push({
-                [Op.or]: [
-                    { certificate: { [Op.or]: [{ [Op.is]: null }, { [Op.eq]: '' }] } },
-                    { certificate: null }
-                ],
-                [Op.or]: [
-                    { get_certificate: { [Op.or]: [false, null] } },
-                    { get_certificate: false }
-                ]
-            });
+            whereClause.get_certificate = { [Op.or]: [false, null] };
         }
 
         // Filter by ISTQB Certification
@@ -1691,7 +1698,8 @@ Response: {"lookingForJob": "Yes"}`;
                 const studentData = student.toJSON();
 
                 // VERIFIED status - HIGHEST priority (+50 points)
-                if (studentData.get_certificate === true || (studentData.certificate && studentData.certificate.trim() !== '')) {
+                // Only treat as verified when `get_certificate` is strictly true (or numeric 1)
+                if (studentData.get_certificate === true || studentData.get_certificate === 1) {
                     score += 50;
                 }
 

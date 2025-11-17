@@ -1432,6 +1432,34 @@ Response: {"lookingForJob": "Yes"}`;
                 requestedCount = 1;
             }
 
+            // If AI didn't extract experience but user mentioned "X year" in query, extract it.
+            // Interpret "1 year experienced" as experience >=1 and <2 by setting both experience and maxExperience to the same integer.
+            if ((!searchParams.experience || searchParams.experience === "") && typeof query === 'string') {
+                // Look for numeric years (e.g., "1 year", "2 yrs")
+                const expNumMatch = query.match(/(\d{1,2})\s*(?:years?|yrs?|year)/i);
+                if (expNumMatch && expNumMatch[1]) {
+                    const n = parseInt(expNumMatch[1]);
+                    if (!isNaN(n)) {
+                        searchParams.experience = n;
+                        searchParams.maxExperience = n; // treated as exact year -> will be interpreted as >=n and < n+1 in where clause
+                    }
+                } else {
+                    // Also support spelled-out numbers for experience (one, two, three...)
+                    const wordToNumExp = {
+                        one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10
+                    };
+                    const wordRegexExp = new RegExp('(' + Object.keys(wordToNumExp).join('|') + ')\\s+(?:years?|yrs?|year)', 'i');
+                    const wmExp = query.match(wordRegexExp);
+                    if (wmExp && wmExp[1]) {
+                        const w = wmExp[1].toLowerCase();
+                        if (wordToNumExp[w]) {
+                            searchParams.experience = wordToNumExp[w];
+                            searchParams.maxExperience = wordToNumExp[w];
+                        }
+                    }
+                }
+            }
+
         // Handle "find best" candidates with special ranking algorithm
         if (searchParams.findBest) {
             // Fetch all students for ranking (limit to reasonable number for performance)
@@ -1453,7 +1481,30 @@ Response: {"lookingForJob": "Yes"}`;
             });
 
             // Calculate scores for each student
-            const scoredStudents = allStudents.map(student => {
+            // If experience range was requested, filter students first to that range
+            let candidatesForScoring = allStudents;
+            if (searchParams.experience || searchParams.maxExperience) {
+                const minExp = searchParams.experience ? parseFloat(searchParams.experience) : null;
+                const maxExp = searchParams.maxExperience ? parseFloat(searchParams.maxExperience) : null;
+                candidatesForScoring = allStudents.filter(s => {
+                    try {
+                        const sd = s.toJSON();
+                        const emp = sd.employment && sd.employment.totalExperience ? parseFloat(sd.employment.totalExperience) : 0;
+                        if (minExp !== null && maxExp !== null) {
+                            return emp >= minExp && emp < (maxExp + 1);
+                        } else if (minExp !== null) {
+                            return emp >= minExp;
+                        } else if (maxExp !== null) {
+                            return emp < (maxExp + 1);
+                        }
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+            }
+
+            const scoredStudents = candidatesForScoring.map(student => {
                 let score = 0;
                 const studentData = student.toJSON();
 
@@ -1691,8 +1742,31 @@ Response: {"lookingForJob": "Yes"}`;
                 limit: 500 // Fetch more students for ranking
             });
 
+            // If experience range was requested, filter students first to that range
+            let candidatesForScoring = allStudents;
+            if (searchParams.experience || searchParams.maxExperience) {
+                const minExp = searchParams.experience ? parseFloat(searchParams.experience) : null;
+                const maxExp = searchParams.maxExperience ? parseFloat(searchParams.maxExperience) : null;
+                candidatesForScoring = allStudents.filter(s => {
+                    try {
+                        const sd = s.toJSON();
+                        const emp = sd.employment && sd.employment.totalExperience ? parseFloat(sd.employment.totalExperience) : 0;
+                        if (minExp !== null && maxExp !== null) {
+                            return emp >= minExp && emp < (maxExp + 1);
+                        } else if (minExp !== null) {
+                            return emp >= minExp;
+                        } else if (maxExp !== null) {
+                            return emp < (maxExp + 1);
+                        }
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+            }
+
             // Calculate scores for each student with skill relevance
-            const scoredStudents = allStudents.map(student => {
+            const scoredStudents = candidatesForScoring.map(student => {
                 let score = 0;
                 let skillRelevance = 0;
                 const studentData = student.toJSON();

@@ -1,5 +1,6 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, searchQATalent, aiSearchQATalent, sendContactEmail  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, sendContactEmail  } = require("../controllers/studentController");
+const { searchQATalent, aiSearchQATalent } = require("../controllers/qaTalentController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
 const router = express.Router();

@@ -21,7 +21,7 @@ exports.aiSearchQATalent = async (req, res) => {
     const systemPrompt = `You are an intelligent QA talent search assistant. Your goal is to find the BEST matching candidates even when exact skills aren't available. Always return relevant results by using fallback skills and related technologies.
 
 CRITICAL "BEST" CANDIDATE DETECTION:
-When users ask for "best", "top", "elite", "premium", "highest quality", "most qualified", "star", "excellent", or similar superlatives, set "findBest": true. This triggers a special ranking algorithm that prioritizes:
+When users ask for "best", "top", "elite", "premium", "highest quality", "most qualified", "star", "excellent", "high scorer", "highest scorer", "top scorer", or similar superlatives, set "findBest": true. This triggers a special ranking algorithm that prioritizes:
 1. VERIFIED students (get_certificate = true) - HIGHEST priority
 2. ISTQB certified professionals - HIGH priority  
 3. Students with the most technical skills - MEDIUM priority
@@ -163,6 +163,28 @@ Response: {"lookingForJob": "Yes"}`;
       });
     }
 
+    // Check if the query is related to QA talent search
+    const hasAnyQARelatedParams = 
+      searchParams.findBest ||
+      searchParams.skills ||
+      searchParams.fallbackSkills ||
+      searchParams.experience ||
+      searchParams.maxExperience ||
+      searchParams.university ||
+      searchParams.company ||
+      searchParams.lookingForJob ||
+      searchParams.isISTQBCertified ||
+      searchParams.verified ||
+      searchParams.passingYear ||
+      searchParams.searchTerm;
+
+    if (!hasAnyQARelatedParams) {
+      return res.status(400).json({
+        error: "Please query about searching qa talent",
+        aiMessage: "Please query about searching qa talent"
+      });
+    }
+
     // Detect requested count (e.g., "find me 10 best QA" or explicit count in AI JSON)
     let requestedCount = null;
     if (searchParams.count && Number.isInteger(searchParams.count)) {
@@ -196,8 +218,9 @@ Response: {"lookingForJob": "Yes"}`;
       const lowered = searchParams.count.toLowerCase().trim();
       if (wordToNum[lowered]) requestedCount = wordToNum[lowered];
     } else if (typeof query === "string") {
+      // Match patterns like "find me 5 best", "show top 5", "get 10 candidates", etc.
       const countRegex =
-        /(?:find|show|get|give me|need|list)\s+(?:me\s+)?(\d{1,3})\s+(?:best|top)?\s*(?:qa|testers|candidates|profiles|students|results|people|engineers)?/i;
+        /(?:find|show|get|give me|need|list)\s+(?:me\s+)?(?:top|best)?\s*(\d{1,3})\s*(?:best|top)?\s*(?:qa|testers|candidates|profiles|students|results|people|engineers)?/i;
       const m = query.match(countRegex);
       if (m && m[1]) {
         requestedCount = parseInt(m[1]);
@@ -292,8 +315,47 @@ Response: {"lookingForJob": "Yes"}`;
 
     // Handle "find best" candidates with special ranking algorithm
     if (searchParams.findBest) {
+      // Build where clause for skill filtering if skills are specified
+      let bestWhereClause = {};
+      let bestOrConditions = [];
+
+      // If skills are specified, filter by them first
+      if (searchParams.skills) {
+        const skillsArray = searchParams.skills.split(",").map(s => s.trim()).filter(Boolean);
+        if (skillsArray.length > 0) {
+          skillsArray.forEach(skill => {
+            bestOrConditions.push(
+              Sequelize.where(
+                Sequelize.literal(`JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`),
+                { [Op.ne]: null }
+              )
+            );
+          });
+        }
+      }
+
+      // Add fallback skills if provided
+      if (searchParams.fallbackSkills) {
+        const fallbackArray = searchParams.fallbackSkills.split(",").map(s => s.trim()).filter(Boolean);
+        if (fallbackArray.length > 0) {
+          fallbackArray.forEach(skill => {
+            bestOrConditions.push(
+              Sequelize.where(
+                Sequelize.literal(`JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`),
+                { [Op.ne]: null }
+              )
+            );
+          });
+        }
+      }
+
+      if (bestOrConditions.length > 0) {
+        bestWhereClause[Op.or] = bestOrConditions;
+      }
+
       // Fetch all students for ranking (limit to reasonable number for performance)
       const allStudents = await Student.findAll({
+        where: bestWhereClause,
         attributes: [
           "StudentId",
           "salutation",
@@ -432,6 +494,89 @@ Response: {"lookingForJob": "Yes"}`;
         .sort((a, b) => b.qualityScore - a.qualityScore)
         .slice(0, maxReturn);
 
+      // If no results found with specific skills, try fallback
+      if (topStudents.length === 0 && (searchParams.skills || searchParams.fallbackSkills)) {
+        // Fetch all students (no skill filter)
+        const fallbackStudents = await Student.findAll({
+          attributes: [
+            "StudentId", "salutation", "student_name", "email", "mobile", "university",
+            "batch_no", "courseTitle", "package", "profession", "company", "designation",
+            "experience", "employment", "skill", "lookingForJob", "isISTQBCertified",
+            "knowMe", "remark", "due", "isEnrolled", "photo", "certificate",
+            "get_certificate", "passingYear", "linkedin", "github", "isMobilePublic",
+            "isEmailPublic", "isLinkedInPublic", "isGithubPublic", "createdAt",
+          ],
+          include: [{ model: Course, attributes: ["courseId", "course_title"], required: false }],
+          limit: 500,
+        });
+
+        // Apply experience filter if needed
+        let fallbackCandidates = fallbackStudents;
+        if (searchParams.experience || searchParams.maxExperience) {
+          const minExp = searchParams.experience ? parseFloat(searchParams.experience) : null;
+          const maxExp = searchParams.maxExperience ? parseFloat(searchParams.maxExperience) : null;
+          fallbackCandidates = fallbackStudents.filter((s) => {
+            try {
+              const sd = s.toJSON();
+              const emp = sd.employment?.totalExperience ? parseFloat(sd.employment.totalExperience) : 0;
+              if (minExp !== null && maxExp !== null) return emp >= minExp && emp < maxExp + 1;
+              if (minExp !== null) return emp >= minExp;
+              if (maxExp !== null) return emp < maxExp + 1;
+              return true;
+            } catch (e) {
+              return false;
+            }
+          });
+        }
+
+        // Score and sort
+        const fallbackScored = fallbackCandidates.map(student => {
+          let score = 0;
+          const studentData = student.toJSON();
+          
+          if (studentData.get_certificate === true || studentData.get_certificate === 1) score += 50;
+          if (studentData.isISTQBCertified === "Yes") score += 20;
+          
+          if (studentData.skill?.technical_skill) {
+            const skillCount = Array.isArray(studentData.skill.technical_skill)
+              ? studentData.skill.technical_skill.length
+              : studentData.skill.technical_skill.split(",").length;
+            score += Math.min(skillCount, 20);
+          }
+          
+          if (studentData.employment?.totalExperience) {
+            const experience = parseFloat(studentData.employment.totalExperience) || 0;
+            score += Math.min(Math.floor(experience), 5);
+          }
+          
+          if (studentData.isEnrolled === true || studentData.isEnrolled === 1) score += 5;
+          
+          return { ...studentData, qualityScore: score };
+        });
+
+        const fallbackTop = fallbackScored
+          .sort((a, b) => b.qualityScore - a.qualityScore)
+          .slice(0, maxReturn);
+
+        return res.status(200).json({
+          totalStudents: fallbackTop.length,
+          students: fallbackTop,
+          searchParams,
+          originalQuery: query,
+          isBestSearch: true,
+          isFallbackSearch: true,
+          requestedCount: requestedCount || null,
+          aiMessage: "Sorry, I didn't find anyone as per your request but following candidate might be potential as per your request.",
+          rankingCriteria: {
+            verified: "50 points",
+            istqbCertified: "20 points",
+            skillsCount: "1 point per skill (max 20)",
+            experienceYears: "1 point per year (max 5)",
+            enrolled: "5 points",
+          },
+        });
+      }
+
       return res.status(200).json({
         totalStudents: topStudents.length,
         students: topStudents,
@@ -439,6 +584,7 @@ Response: {"lookingForJob": "Yes"}`;
         originalQuery: query,
         isBestSearch: true,
         requestedCount: requestedCount || null,
+        aiMessage: topStudents.length > 0 ? "Here are the best matching candidates based on your requirements." : "No matching candidates found.",
         rankingCriteria: {
           verified: "50 points",
           istqbCertified: "20 points",

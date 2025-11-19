@@ -468,6 +468,7 @@ exports.getAllStudents = async (req, res) => {
         "employment",
         "education",
         "skill",
+        "projects",
         "lookingForJob",
         "isISTQBCertified",
         "istqb_certificate",
@@ -535,6 +536,7 @@ exports.getStudentById = async (req, res) => {
         "employment",
         "education",
         "skill",
+        "projects",
         "lookingForJob",
         "isISTQBCertified",
         "istqb_certificate",
@@ -552,6 +554,7 @@ exports.getStudentById = async (req, res) => {
         "isLinkedInPublic",
         "isGithubPublic",
         "opinion",
+        "aboutMe",
         "createdAt",
         "get_certificate",
       ],
@@ -650,8 +653,21 @@ exports.updateStudent = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
+    // ✅ Check if get_certificate changed from false to true
+    const certificateJustEnabled = !student.get_certificate && (get_certificate === true || get_certificate === 1);
+    
+    // ✅ Check if get_certificate changed from true to false
+    const certificateJustDisabled = student.get_certificate && (get_certificate === false || get_certificate === 0);
+
     // ✅ Find Corresponding User by username (mapped to StudentId)
     const user = await User.findOne({ where: { username: studentId } });
+
+    // ✅ If certificate is being disabled, clear the certificate URL
+    let finalCertificateUrl = certificate;
+    if (certificateJustDisabled) {
+      finalCertificateUrl = null;
+      console.log("Certificate disabled, clearing certificate URL");
+    }
 
     // ✅ Update Student Data
     await student.update({
@@ -669,6 +685,7 @@ exports.updateStudent = async (req, res) => {
       employment: req.body.employment,
       education: req.body.education,
       skill: req.body.skill,
+      projects: req.body.projects,
       lookingForJob: req.body.lookingForJob,
       isISTQBCertified: req.body.isISTQBCertified,
       istqb_certificate: req.body.istqb_certificate,
@@ -676,7 +693,7 @@ exports.updateStudent = async (req, res) => {
       remark,
       opinion,
       isEnrolled,
-      certificate,
+      certificate: finalCertificateUrl,
       photo: req.body.photo,
       linkedin: req.body.linkedin,
       github: req.body.github,
@@ -684,6 +701,7 @@ exports.updateStudent = async (req, res) => {
       isEmailPublic: req.body.isEmailPublic,
       isLinkedInPublic: req.body.isLinkedInPublic,
       isGithubPublic: req.body.isGithubPublic,
+      aboutMe: req.body.aboutMe,
       get_certificate,
       previous_course_id,
       previous_batch_no,
@@ -692,6 +710,76 @@ exports.updateStudent = async (req, res) => {
     // ✅ If email is updated, also update it in the User table
     if (email && user) {
       await user.update({ email });
+    }
+
+    // ✅ Send email notification when certificate is enabled
+    if (certificateJustEnabled) {
+      try {
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const certificateEmailBody = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border-radius: 8px;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h1 style="color: #1e40af; margin-bottom: 10px;">🎉 Congratulations ${student.student_name || student_name}!</h1>
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white;">
+                <h2 style="margin: 0; font-size: 1.5rem;">Your Course Certificate is Ready!</h2>
+              </div>
+            </div>
+
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p style="font-size: 1.1rem; color: #2d3748; margin-bottom: 15px;">
+                We are delighted to inform you that you have successfully completed the course and your certificate is now available!
+              </p>
+              
+              <div style="background: white; padding: 15px; border-left: 4px solid #28a745; margin: 15px 0;">
+                <p style="margin: 0; color: #495057;">
+                  <strong>How to access your certificate:</strong>
+                </p>
+                <ol style="margin: 10px 0 0 0; padding-left: 20px; color: #495057;">
+                  <li>Login to your student portal at <a href="${frontendUrl}" style="color: #1e40af;">${frontendUrl}</a></li>
+                  <li>Navigate to the <strong>"View Certificate"</strong> menu</li>
+                  <li>Click on <strong>"View Certificate"</strong> button</li>
+                  <li>Your certificate will be displayed and you can download it</li>
+                </ol>
+              </div>
+
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${frontendUrl}/certificate" 
+                   style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 1.1rem;">
+                  🎓 View My Certificate Now
+                </a>
+              </div>
+
+              <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin-top: 20px;">
+                <p style="margin: 0; color: #1565c0; font-size: 0.95rem;">
+                  <strong>💡 Tip:</strong> Download your certificate and add it to your LinkedIn profile and resume to showcase your achievement!
+                </p>
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
+              <p style="color: #64748b; margin-bottom: 10px;">
+                Congratulations on completing the course! We wish you all the best in your career journey.
+              </p>
+              <p style="color: #64748b; font-size: 0.9rem;">
+                <strong>Best regards,</strong><br>
+                Road to SDET Team<br>
+                <a href="https://www.roadtocareer.net" style="color: #1e40af;">www.roadtocareer.net</a>
+              </p>
+            </div>
+          </div>
+        `;
+
+        await sendEmail(
+          student.email || email,
+          "Your Course Certificate is Ready! - Road to SDET",
+          certificateEmailBody,
+          "text/html"
+        );
+        console.log("📧 Certificate ready notification email sent successfully to:", student.email || email);
+      } catch (emailError) {
+        console.error("❌ Error sending certificate notification email:", emailError);
+        // Don't fail the update if email fails, just log the error
+      }
     }
 
     return res.status(200).json({
@@ -1286,6 +1374,82 @@ exports.sendContactEmail = async (req, res) => {
     console.error("Error sending contact email:", error);
     return res.status(500).json({
       error: error.message || "Failed to send email. Please try again.",
+    });
+  }
+};
+
+// ✅ Save Auto-Generated Certificate PNG
+exports.saveCertificate = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { imageData } = req.body;
+
+    if (!imageData) {
+      return res.status(400).json({ message: "Image data is required." });
+    }
+
+    // ✅ Fetch Student
+    const student = await Student.findOne({ where: { StudentId: studentId } });
+
+    if (!student) {
+      return res.status(404).json({ message: "Student not found." });
+    }
+
+    // ✅ Don't overwrite manually uploaded certificates (certificates NOT in /certificates/ folder are manual)
+    // Also check if certificate already exists in /certificates/ folder (already auto-generated)
+    if (student.certificate) {
+      if (!student.certificate.includes('/certificates/')) {
+        console.log("Manual certificate exists, skipping auto-generation");
+        return res.status(200).json({
+          message: "Manual certificate already exists",
+          certificateUrl: student.certificate
+        });
+      }
+      // If auto-generated certificate already exists, return it
+      console.log("Auto-generated certificate already exists");
+      return res.status(200).json({
+        message: "Certificate already exists",
+        certificateUrl: student.certificate
+      });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    // ✅ Remove base64 prefix
+    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // ✅ Create certificates directory if it doesn't exist
+    const certificatesDir = path.join(__dirname, '../../frontend/public/certificates');
+    if (!fs.existsSync(certificatesDir)) {
+      fs.mkdirSync(certificatesDir, { recursive: true });
+    }
+
+    // ✅ Generate filename: StudentName-StudentId.png
+    const sanitizedName = student.student_name.replace(/[^a-zA-Z0-9]/g, '-');
+    const filename = `${sanitizedName}-${studentId}.png`;
+    const filepath = path.join(certificatesDir, filename);
+
+    // ✅ Save file
+    fs.writeFileSync(filepath, buffer);
+
+    // ✅ Generate full URL path with frontend domain
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const certificateUrl = `${frontendUrl}/certificates/${filename}`;
+
+    // ✅ Update student record
+    await student.update({ certificate: certificateUrl });
+
+    return res.status(200).json({
+      message: "Certificate saved successfully!",
+      certificateUrl
+    });
+  } catch (error) {
+    console.error("Error saving certificate:", error);
+    return res.status(500).json({ 
+      message: "Failed to save certificate.",
+      error: error.message 
     });
   }
 };

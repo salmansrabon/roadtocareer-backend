@@ -83,6 +83,10 @@ const Student = sequelize.define("Student", {
         type: DataTypes.JSON,
         allowNull: true
     },
+    projects: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     lookingForJob: {
         type: DataTypes.ENUM('Yes', 'No'),
         defaultValue: 'No'
@@ -161,6 +165,10 @@ const Student = sequelize.define("Student", {
     },
     opinion: {
         type: DataTypes.TEXT
+    },
+    aboutMe: {
+        type: DataTypes.TEXT,
+        allowNull: true
     },
     google_access_id: {
         type: DataTypes.STRING

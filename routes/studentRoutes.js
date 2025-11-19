@@ -1,5 +1,5 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, sendContactEmail  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, sendContactEmail, saveCertificate  } = require("../controllers/studentController");
 const { searchQATalent, aiSearchQATalent } = require("../controllers/qaTalentController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
@@ -22,5 +22,6 @@ router.delete("/attendance/:studentId/:index", authenticateUser, requireAdmin, d
 router.post("/migrate/:studentId", authenticateUser, requireAdmin, migrateStudent);
 router.get("/companies/list", getAllCompanies);
 router.get("/course-progress/:studentId", authenticateUser, getCourseProgress);
+router.post("/save-certificate/:studentId", authenticateUser, saveCertificate);
 
 module.exports = router;

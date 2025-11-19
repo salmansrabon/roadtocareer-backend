@@ -75,6 +75,10 @@ const Student = sequelize.define("Student", {
         type: DataTypes.JSON,
         allowNull: true
     },
+    education: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     skill: {
         type: DataTypes.JSON,
         allowNull: true
@@ -86,6 +90,10 @@ const Student = sequelize.define("Student", {
     isISTQBCertified: {
         type: DataTypes.ENUM('Yes', 'No'),
         defaultValue: 'No'
+    },
+    istqb_certificate: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
     company: {
         type: DataTypes.STRING

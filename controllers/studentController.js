@@ -1380,24 +1380,35 @@ exports.sendContactEmail = async (req, res) => {
 
 // ✅ Save Auto-Generated Certificate PNG
 exports.saveCertificate = async (req, res) => {
+  console.log("🎓 ============ SAVE CERTIFICATE REQUEST ============");
+  console.log("  - Student ID:", req.params.studentId);
+  console.log("  - Request body keys:", Object.keys(req.body));
+  
   try {
     const { studentId } = req.params;
     const { imageData } = req.body;
 
     if (!imageData) {
+      console.error("❌ No image data provided in request");
       return res.status(400).json({ message: "Image data is required." });
     }
+
+    console.log("  - Image data size:", imageData.length, "bytes");
 
     // ✅ Fetch Student
     const student = await Student.findOne({ where: { StudentId: studentId } });
 
     if (!student) {
+      console.error("❌ Student not found:", studentId);
       return res.status(404).json({ message: "Student not found." });
     }
 
+    console.log("  - Student found:", student.student_name);
+    console.log("  - Existing certificate:", student.certificate || "None");
+
     // ✅ Don't overwrite manually uploaded certificates or existing auto-generated ones
     if (student.certificate && student.certificate.includes('/images/certificates/')) {
-      console.log("Auto-generated certificate already exists");
+      console.log("⏭️ Auto-generated certificate already exists, skipping");
       return res.status(200).json({
         message: "Certificate already exists",
         certificateUrl: student.certificate
@@ -1410,41 +1421,90 @@ exports.saveCertificate = async (req, res) => {
     // ✅ Remove base64 prefix
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, 'base64');
+    console.log("  - Buffer size:", buffer.length, "bytes");
 
     // ✅ Create certificates directory in backend if it doesn't exist
     const certificatesDir = path.join(__dirname, '../images/certificates');
+    console.log("  - Target directory:", certificatesDir);
+    
     if (!fs.existsSync(certificatesDir)) {
-      fs.mkdirSync(certificatesDir, { recursive: true });
-      console.log("✅ Created certificates directory:", certificatesDir);
+      console.log("  - Directory doesn't exist, creating...");
+      try {
+        fs.mkdirSync(certificatesDir, { recursive: true });
+        console.log("✅ Created certificates directory successfully");
+      } catch (mkdirError) {
+        console.error("❌ Failed to create directory:", mkdirError);
+        throw new Error(`Failed to create directory: ${mkdirError.message}`);
+      }
+    } else {
+      console.log("  - Directory exists");
     }
 
     // ✅ Generate filename: StudentName-StudentId.png
     const sanitizedName = student.student_name.replace(/[^a-zA-Z0-9]/g, '-');
     const filename = `${sanitizedName}-${studentId}.png`;
     const filepath = path.join(certificatesDir, filename);
+    console.log("  - Target filename:", filename);
+    console.log("  - Target filepath:", filepath);
 
     // ✅ Save file to backend
-    fs.writeFileSync(filepath, buffer);
-    console.log("✅ Certificate saved to:", filepath);
+    try {
+      fs.writeFileSync(filepath, buffer);
+      console.log("✅ Certificate PNG saved successfully to filesystem");
+      
+      // Verify file exists
+      if (fs.existsSync(filepath)) {
+        const stats = fs.statSync(filepath);
+        console.log("  - File size on disk:", stats.size, "bytes");
+      } else {
+        console.error("❌ File write reported success but file doesn't exist!");
+      }
+    } catch (writeError) {
+      console.error("❌ Failed to write file:", writeError);
+      throw new Error(`Failed to write file: ${writeError.message}`);
+    }
 
     // ✅ Generate full URL path using BASE_URL from environment
     const baseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    const certificateUrl = `${baseUrl}/images/certificates/${filename}`;
+    const certificateUrl = `${baseUrl}/api/images/certificates/${filename}`;
+    console.log("  - Generated certificate URL:", certificateUrl);
+    console.log("  - BASE_URL from env:", process.env.BASE_URL);
 
     // ✅ Update student record with full URL
-    await student.update({ certificate: certificateUrl });
+    try {
+      await student.update({ certificate: certificateUrl });
+      console.log("✅ Certificate URL saved to database successfully");
+      
+      // Verify update
+      const updatedStudent = await Student.findOne({ where: { StudentId: studentId } });
+      console.log("  - Verified certificate in DB:", updatedStudent.certificate);
+    } catch (dbError) {
+      console.error("❌ Failed to update database:", dbError);
+      throw new Error(`Failed to update database: ${dbError.message}`);
+    }
 
-    console.log("✅ Certificate URL saved to database:", certificateUrl);
+    console.log("🎉 ============ CERTIFICATE SAVE COMPLETE ============");
 
     return res.status(200).json({
       message: "Certificate saved successfully!",
-      certificateUrl
+      certificateUrl,
+      debug: {
+        filename,
+        filepath,
+        baseUrl,
+        fileSize: buffer.length
+      }
     });
   } catch (error) {
-    console.error("❌ Error saving certificate:", error);
+    console.error("❌ ============ ERROR IN SAVE CERTIFICATE ============");
+    console.error("  - Error name:", error.name);
+    console.error("  - Error message:", error.message);
+    console.error("  - Error stack:", error.stack);
+    
     return res.status(500).json({ 
       message: "Failed to save certificate.",
-      error: error.message 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

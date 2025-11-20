@@ -186,7 +186,18 @@ Response: {"lookingForJob": "Yes"}`;
     }
 
     // Detect requested count (e.g., "find me 10 best QA" or explicit count in AI JSON)
+    // Support "all", "show all", "every", etc. to return all results
     let requestedCount = null;
+    let showAllResults = false;
+    
+    // Check if user wants all results
+    if (typeof query === "string") {
+      const showAllRegex = /\b(all|every|everything|complete|entire|full list|show all|get all|find all|list all)\b/i;
+      if (showAllRegex.test(query)) {
+        showAllResults = true;
+      }
+    }
+    
     if (searchParams.count && Number.isInteger(searchParams.count)) {
       requestedCount = parseInt(searchParams.count);
     } else if (searchParams.count && !isNaN(parseInt(searchParams.count))) {
@@ -487,9 +498,10 @@ Response: {"lookingForJob": "Yes"}`;
       });
 
       // Sort by quality score (descending) and return top N (respect requestedCount if provided)
-      // Default to top 15 when HR does not specify a count
-      const maxReturn =
-        requestedCount && requestedCount > 0 ? requestedCount : 15;
+      // Show all if requested, otherwise default to 15
+      const maxReturn = showAllResults 
+        ? scoredStudents.length // Return all scored students
+        : (requestedCount && requestedCount > 0 ? requestedCount : 15);
       const topStudents = scoredStudents
         .sort((a, b) => b.qualityScore - a.qualityScore)
         .slice(0, maxReturn);
@@ -755,9 +767,11 @@ Response: {"lookingForJob": "Yes"}`;
     }
 
     // Fetch matching students (respect requestedCount if present)
-    // Default to 15 results when the user did not request a specific count
-    const queryLimit =
-      requestedCount && requestedCount > 0 ? requestedCount : 15;
+    // Show all results if user requested "all", otherwise default to 15
+    const queryLimit = showAllResults 
+      ? 10000 // Very high limit to show all results
+      : (requestedCount && requestedCount > 0 ? requestedCount : 15);
+    
     // Fetch matching students
     const students = await Student.findAll({
       where: whereClause,
@@ -991,9 +1005,10 @@ Response: {"lookingForJob": "Yes"}`;
       });
 
       // Sort by quality score (descending) and return top N best matches (respect requestedCount)
-      // Default fallback top results to 15 when no count is requested
-      const fallbackMax =
-        requestedCount && requestedCount > 0 ? requestedCount : 15;
+      // Show all if requested, otherwise default to 15
+      const fallbackMax = showAllResults
+        ? scoredStudents.length // Return all scored students
+        : (requestedCount && requestedCount > 0 ? requestedCount : 15);
       const bestMatchingStudents = scoredStudents
         .sort((a, b) => b.qualityScore - a.qualityScore)
         .slice(0, fallbackMax);

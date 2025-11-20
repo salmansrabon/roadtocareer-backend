@@ -35,7 +35,21 @@ const chatbotRoutes = require("./routes/chatbotRoutes");
 
 
 const app = express();
-app.use(cors());
+
+// ✅ CORS Configuration - Allow requests from frontend
+const corsOptions = {
+    origin: [
+        'http://localhost:3000',
+        'https://www.roadtocareer.net',
+        'https://roadtocareer.net',
+        process.env.FRONTEND_URL
+    ].filter(Boolean),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased limit for certificate images
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 

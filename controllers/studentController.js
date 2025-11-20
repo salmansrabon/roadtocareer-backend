@@ -1395,17 +1395,8 @@ exports.saveCertificate = async (req, res) => {
       return res.status(404).json({ message: "Student not found." });
     }
 
-    // ✅ Don't overwrite manually uploaded certificates (certificates NOT in /certificates/ folder are manual)
-    // Also check if certificate already exists in /certificates/ folder (already auto-generated)
-    if (student.certificate) {
-      if (!student.certificate.includes('/certificates/')) {
-        console.log("Manual certificate exists, skipping auto-generation");
-        return res.status(200).json({
-          message: "Manual certificate already exists",
-          certificateUrl: student.certificate
-        });
-      }
-      // If auto-generated certificate already exists, return it
+    // ✅ Don't overwrite manually uploaded certificates or existing auto-generated ones
+    if (student.certificate && student.certificate.includes('/images/certificates/')) {
       console.log("Auto-generated certificate already exists");
       return res.status(200).json({
         message: "Certificate already exists",
@@ -1420,10 +1411,11 @@ exports.saveCertificate = async (req, res) => {
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, 'base64');
 
-    // ✅ Create certificates directory if it doesn't exist
-    const certificatesDir = path.join(__dirname, '../../frontend/public/certificates');
+    // ✅ Create certificates directory in backend if it doesn't exist
+    const certificatesDir = path.join(__dirname, '../images/certificates');
     if (!fs.existsSync(certificatesDir)) {
       fs.mkdirSync(certificatesDir, { recursive: true });
+      console.log("✅ Created certificates directory:", certificatesDir);
     }
 
     // ✅ Generate filename: StudentName-StudentId.png
@@ -1431,22 +1423,25 @@ exports.saveCertificate = async (req, res) => {
     const filename = `${sanitizedName}-${studentId}.png`;
     const filepath = path.join(certificatesDir, filename);
 
-    // ✅ Save file
+    // ✅ Save file to backend
     fs.writeFileSync(filepath, buffer);
+    console.log("✅ Certificate saved to:", filepath);
 
-    // ✅ Generate full URL path with frontend domain
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const certificateUrl = `${frontendUrl}/certificates/${filename}`;
+    // ✅ Generate full URL path using BASE_URL from environment
+    const baseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const certificateUrl = `${baseUrl}/images/certificates/${filename}`;
 
-    // ✅ Update student record
+    // ✅ Update student record with full URL
     await student.update({ certificate: certificateUrl });
+
+    console.log("✅ Certificate URL saved to database:", certificateUrl);
 
     return res.status(200).json({
       message: "Certificate saved successfully!",
       certificateUrl
     });
   } catch (error) {
-    console.error("Error saving certificate:", error);
+    console.error("❌ Error saving certificate:", error);
     return res.status(500).json({ 
       message: "Failed to save certificate.",
       error: error.message 

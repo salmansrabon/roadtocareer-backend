@@ -11,15 +11,16 @@ const createAssignmentQuestion = async (req, res) => {
         // ✅ Generate Assignment Link
         const assignmentLink = `${process.env.FRONTEND_URL || 'https://www.roadtocareer.net'}/assignment/submit/${newAssignment.id}`;
 
-        // 2. Get students directly from DB for given courseId
-        const courseId = req.body.courseId;
-        const students = await Student.findAll({
-            where: { CourseId: courseId },
-            include: [{ model: User, attributes: ["email", "isValid"] }]
+        // 2. Return success response immediately after DB save
+        console.log("✅ Assignment created successfully.");
+        res.status(201).json({
+            message: "Assignment created successfully.",
+            assignment: newAssignment,
+            assignmentLink
         });
 
-        console.log(students);
-
+        // 3. Send emails in the background (non-blocking)
+        const courseId = req.body.courseId;
         const subject = `New Assignment: ${req.body.Assignment_Title}`;
         const submissionDeadline = new Date(req.body.SubmissionDate).toLocaleString("en-US", {
             year: "numeric",
@@ -45,25 +46,32 @@ Please make sure to submit it before the deadline. Login to your portal to check
 Regards,
 Team, Road to SDET`;
 
-        // 3. Send emails to all students (only if email exists and isValid === 1)
-        for (const student of students) {
-            if (student.email && student.User?.isValid === 1) {
-                await sendEmail(student.email, subject, text);
-                console.log(`📧 Email sent to ${student.email}`);
-            }
-        }
+        // Send emails asynchronously without blocking the response
+        setImmediate(async () => {
+            try {
+                const students = await Student.findAll({
+                    where: { CourseId: courseId },
+                    include: [{ model: User, attributes: ["email", "isValid"] }]
+                });
 
-        // 4. Return success response with link
-        console.log("✅ Assignment created and emails sent successfully.");
-        res.status(201).json({
-            message: "Assignment created successfully.",
-            assignment: newAssignment,
-            assignmentLink
+                console.log(`📧 Starting to send emails to ${students.length} students...`);
+
+                for (const student of students) {
+                    if (student.email && student.User?.isValid === 1) {
+                        await sendEmail(student.email, subject, text);
+                        console.log(`📧 Email sent to ${student.email}`);
+                    }
+                }
+
+                console.log("✅ All emails sent successfully.");
+            } catch (emailError) {
+                console.error("❌ Error sending emails in background:", emailError);
+            }
         });
 
     } catch (error) {
-        console.error("❌ Error creating assignment or sending emails:", error);
-        res.status(500).json({ message: "Error creating assignment question or sending emails" });
+        console.error("❌ Error creating assignment:", error);
+        res.status(500).json({ message: "Error creating assignment question" });
     }
 };
 

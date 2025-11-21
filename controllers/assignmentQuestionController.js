@@ -130,8 +130,32 @@ const updateAssignmentQuestion = async (req, res) => {
     }
 };
 
+const deleteAssignmentQuestion = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check if the assignment exists
+        const assignment = await AssignmentQuestion.findByPk(id);
+
+        if (!assignment) {
+            return res.status(404).json({ message: "Assignment not found." });
+        }
+
+        // Delete the assignment
+        await assignment.destroy();
+
+        return res.status(200).json({
+            message: "Assignment deleted successfully."
+        });
+    } catch (error) {
+        console.error("Error deleting assignment:", error);
+        return res.status(500).json({ message: "Error deleting assignment." });
+    }
+};
+
 module.exports = {
     createAssignmentQuestion,
     getAllAssignmentQuestions,
-    updateAssignmentQuestion
+    updateAssignmentQuestion,
+    deleteAssignmentQuestion
 };

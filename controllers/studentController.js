@@ -549,16 +549,9 @@ exports.getQaTalent = async (req, res) => {
 
     // ✅ Filter: Only show students with non-empty technical_skill array
     // Check if skill field is not null and technical_skill array is not empty
-    whereClause[Op.and] = [
-      Sequelize.where(
-        Sequelize.col('skill'),
-        { [Op.ne]: null }
-      ),
-      Sequelize.where(
-        Sequelize.literal("JSON_LENGTH(skill, '$.technical_skill')"),
-        { [Op.gt]: 0 }
-      )
-    ];
+    whereClause[Op.and] = Sequelize.literal(
+      "skill IS NOT NULL AND JSON_LENGTH(skill, '$.technical_skill') > 0"
+    );
 
     // ✅ Build include clause for isValid filter
     const includeClause = [

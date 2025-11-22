@@ -466,6 +466,143 @@ exports.getAllStudents = async (req, res) => {
         "designation",
         "experience",
         "employment",
+        "skill",
+        "lookingForJob",
+        "isISTQBCertified",
+        "knowMe",
+        "remark",
+        "due",
+        "isEnrolled",
+        "photo",
+        "certificate",
+        "get_certificate",
+        "passingYear",
+        "linkedin",
+        "github",
+        "isMobilePublic",
+        "isEmailPublic",
+        "isLinkedInPublic",
+        "isGithubPublic",
+        "createdAt",
+      ],
+      include: includeClause,
+      order: [
+        ["get_certificate", "DESC"],
+        ["createdAt", "DESC"],
+      ],
+      offset,
+      limit: limitNumber,
+    });
+
+    return res.status(200).json({
+      totalStudents,
+      totalPages: Math.ceil(totalStudents / limitNumber),
+      currentPage: pageNumber,
+      students,
+    });
+  } catch (error) {
+    console.error("Error fetching students:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+exports.getQaTalent = async (req, res) => {
+  try {
+    const {
+      courseId,
+      batch_no,
+      studentId,
+      salutation,
+      student_name,
+      email,
+      mobile,
+      university,
+      profession,
+      company,
+      isValid,
+      isEnrolled,
+      remark,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const offset = (pageNumber - 1) * limitNumber;
+
+    let whereClause = {};
+
+    if (courseId) whereClause.CourseId = courseId;
+    if (batch_no) whereClause.batch_no = batch_no;
+    if (studentId) whereClause.StudentId = { [Op.like]: `%${studentId}%` };
+    if (salutation) whereClause.salutation = { [Op.like]: `%${salutation}%` };
+    if (student_name)
+      whereClause.student_name = { [Op.like]: `%${student_name}%` };
+    if (email) whereClause.email = { [Op.like]: `%${email}%` };
+    if (mobile) whereClause.mobile = { [Op.like]: `%${mobile}%` };
+    if (university) whereClause.university = { [Op.like]: `%${university}%` };
+    if (profession) whereClause.profession = { [Op.like]: `%${profession}%` };
+    if (company) whereClause.company = { [Op.like]: `%${company}%` };
+    if (remark) whereClause.remark = { [Op.like]: `%${remark}%` };
+    if (isEnrolled !== undefined && isEnrolled !== "")
+      whereClause.isEnrolled = parseInt(isEnrolled);
+
+    // ✅ Filter: Only show students with non-empty technical_skill array
+    // Check if skill field is not null and technical_skill array is not empty
+    whereClause[Op.and] = [
+      Sequelize.where(
+        Sequelize.col('skill'),
+        { [Op.ne]: null }
+      ),
+      Sequelize.where(
+        Sequelize.literal("JSON_LENGTH(skill, '$.technical_skill')"),
+        { [Op.gt]: 0 }
+      )
+    ];
+
+    // ✅ Build include clause for isValid filter
+    const includeClause = [
+      {
+        model: Course,
+        attributes: ["courseId", "course_title"],
+      },
+      {
+        model: User,
+        attributes: ["isValid"],
+        required: isValid !== undefined && isValid !== "",
+        where:
+          isValid !== undefined && isValid !== ""
+            ? {
+                isValid: parseInt(isValid),
+              }
+            : undefined,
+      },
+    ];
+
+    // ✅ First get total count with same filters
+    const totalStudents = await Student.count({
+      where: whereClause,
+      include: includeClause,
+    });
+
+    // ✅ Now fetch paginated data
+    const students = await Student.findAll({
+      where: whereClause,
+      attributes: [
+        "StudentId",
+        "salutation",
+        "student_name",
+        "email",
+        "mobile",
+        "university",
+        "batch_no",
+        "courseTitle",
+        "package",
+        "profession",
+        "company",
+        "designation",
+        "experience",
+        "employment",
         "education",
         "skill",
         "projects",

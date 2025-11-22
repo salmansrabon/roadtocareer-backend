@@ -16,7 +16,6 @@ const {
   calculateAttendancePercentage,
 } = require("../utils/attendanceHelper");
 
-
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
   if (!student_name || student_name.length < 2) {
@@ -91,12 +90,10 @@ exports.studentSignup = async (req, res) => {
       !courseId ||
       !package_name
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Student name, email, mobile, university, courseId, and package_name are required.",
-        });
+      return res.status(400).json({
+        message:
+          "Student name, email, mobile, university, courseId, and package_name are required.",
+      });
     }
 
     // ✅ Check if Student Already Exists in this Course
@@ -123,11 +120,9 @@ exports.studentSignup = async (req, res) => {
       where: { packageName: package_name, courseId },
     });
     if (!packageData) {
-      return res
-        .status(400)
-        .json({
-          message: "Invalid package. Package does not exist for this course.",
-        });
+      return res.status(400).json({
+        message: "Invalid package. Package does not exist for this course.",
+      });
     }
 
     // ✅ Generate Unique Student ID
@@ -320,12 +315,10 @@ exports.studentSignup = async (req, res) => {
       }
     } catch (emailError) {
       console.error("❌ Error sending email to student:", emailError);
-      return res
-        .status(500)
-        .json({
-          message:
-            "Student registered but email sending failed. Please contact admin.",
-        });
+      return res.status(500).json({
+        message:
+          "Student registered but email sending failed. Please contact admin.",
+      });
     }
 
     // ✅ Fetch Admin Users and Send Notification Email
@@ -549,9 +542,15 @@ exports.getQaTalent = async (req, res) => {
 
     // ✅ Filter: Only show students with non-empty technical_skill array
     // Check if skill field is not null and technical_skill array is not empty
-    whereClause[Op.and] = Sequelize.literal(
-      "skill IS NOT NULL AND JSON_LENGTH(skill, '$.technical_skill') > 0"
-    );
+    // ❗ Proper technical_skill filter block
+    whereClause[Op.and] = [
+      Sequelize.literal("skill IS NOT NULL"),
+      Sequelize.literal("JSON_EXTRACT(skill, '$.technical_skill') IS NOT NULL"),
+      Sequelize.literal("JSON_EXTRACT(skill, '$.technical_skill') != '[]'"),
+      Sequelize.literal(
+        "JSON_LENGTH(JSON_EXTRACT(skill, '$.technical_skill')) > 0"
+      ),
+    ];
 
     // ✅ Build include clause for isValid filter
     const includeClause = [
@@ -784,10 +783,14 @@ exports.updateStudent = async (req, res) => {
     }
 
     // ✅ Check if get_certificate changed from false to true
-    const certificateJustEnabled = !student.get_certificate && (get_certificate === true || get_certificate === 1);
-    
+    const certificateJustEnabled =
+      !student.get_certificate &&
+      (get_certificate === true || get_certificate === 1);
+
     // ✅ Check if get_certificate changed from true to false
-    const certificateJustDisabled = student.get_certificate && (get_certificate === false || get_certificate === 0);
+    const certificateJustDisabled =
+      student.get_certificate &&
+      (get_certificate === false || get_certificate === 0);
 
     // ✅ Find Corresponding User by username (mapped to StudentId)
     const user = await User.findOne({ where: { username: studentId } });
@@ -845,11 +848,13 @@ exports.updateStudent = async (req, res) => {
     // ✅ Send email notification when certificate is enabled
     if (certificateJustEnabled) {
       try {
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
         const certificateEmailBody = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border-radius: 8px;">
             <div style="text-align: center; margin-bottom: 20px;">
-              <h1 style="color: #1e40af; margin-bottom: 10px;">🎉 Congratulations ${student.student_name || student_name}!</h1>
+              <h1 style="color: #1e40af; margin-bottom: 10px;">🎉 Congratulations ${
+                student.student_name || student_name
+              }!</h1>
               <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white;">
                 <h2 style="margin: 0; font-size: 1.5rem;">Your Course Certificate is Ready!</h2>
               </div>
@@ -905,9 +910,15 @@ exports.updateStudent = async (req, res) => {
           certificateEmailBody,
           "text/html"
         );
-        console.log("📧 Certificate ready notification email sent successfully to:", student.email || email);
+        console.log(
+          "📧 Certificate ready notification email sent successfully to:",
+          student.email || email
+        );
       } catch (emailError) {
-        console.error("❌ Error sending certificate notification email:", emailError);
+        console.error(
+          "❌ Error sending certificate notification email:",
+          emailError
+        );
         // Don't fail the update if email fails, just log the error
       }
     }
@@ -1050,11 +1061,9 @@ exports.markAttendance = async (req, res) => {
         lastAttendanceUTC.isSameOrAfter(classTimeUTC) &&
         lastAttendanceUTC.isSameOrBefore(maxAllowedTimeUTC)
       ) {
-        return res
-          .status(400)
-          .json({
-            message: "You have already given attendance for this session.",
-          });
+        return res.status(400).json({
+          message: "You have already given attendance for this session.",
+        });
       }
     }
 
@@ -1513,7 +1522,7 @@ exports.saveCertificate = async (req, res) => {
   console.log("🎓 ============ SAVE CERTIFICATE REQUEST ============");
   console.log("  - Student ID:", req.params.studentId);
   console.log("  - Request body keys:", Object.keys(req.body));
-  
+
   try {
     const { studentId } = req.params;
     const { imageData } = req.body;
@@ -1537,26 +1546,29 @@ exports.saveCertificate = async (req, res) => {
     console.log("  - Existing certificate:", student.certificate || "None");
 
     // ✅ Don't overwrite manually uploaded certificates or existing auto-generated ones
-    if (student.certificate && student.certificate.includes('/images/certificates/')) {
+    if (
+      student.certificate &&
+      student.certificate.includes("/images/certificates/")
+    ) {
       console.log("⏭️ Auto-generated certificate already exists, skipping");
       return res.status(200).json({
         message: "Certificate already exists",
-        certificateUrl: student.certificate
+        certificateUrl: student.certificate,
       });
     }
 
-    const fs = require('fs');
-    const path = require('path');
+    const fs = require("fs");
+    const path = require("path");
 
     // ✅ Remove base64 prefix
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
-    const buffer = Buffer.from(base64Data, 'base64');
+    const buffer = Buffer.from(base64Data, "base64");
     console.log("  - Buffer size:", buffer.length, "bytes");
 
     // ✅ Create certificates directory in backend if it doesn't exist
-    const certificatesDir = path.join(__dirname, '../images/certificates');
+    const certificatesDir = path.join(__dirname, "../images/certificates");
     console.log("  - Target directory:", certificatesDir);
-    
+
     if (!fs.existsSync(certificatesDir)) {
       console.log("  - Directory doesn't exist, creating...");
       try {
@@ -1571,7 +1583,7 @@ exports.saveCertificate = async (req, res) => {
     }
 
     // ✅ Generate filename: StudentName-StudentId.png
-    const sanitizedName = student.student_name.replace(/[^a-zA-Z0-9]/g, '-');
+    const sanitizedName = student.student_name.replace(/[^a-zA-Z0-9]/g, "-");
     const filename = `${sanitizedName}-${studentId}.png`;
     const filepath = path.join(certificatesDir, filename);
     console.log("  - Target filename:", filename);
@@ -1581,7 +1593,7 @@ exports.saveCertificate = async (req, res) => {
     try {
       fs.writeFileSync(filepath, buffer);
       console.log("✅ Certificate PNG saved successfully to filesystem");
-      
+
       // Verify file exists
       if (fs.existsSync(filepath)) {
         const stats = fs.statSync(filepath);
@@ -1595,7 +1607,10 @@ exports.saveCertificate = async (req, res) => {
     }
 
     // ✅ Generate full URL path using BASE_URL from environment
-    const baseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const baseUrl =
+      process.env.BASE_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://localhost:5000";
     const certificateUrl = `${baseUrl}/api/images/certificates/${filename}`;
     console.log("  - Generated certificate URL:", certificateUrl);
     console.log("  - BASE_URL from env:", process.env.BASE_URL);
@@ -1604,10 +1619,15 @@ exports.saveCertificate = async (req, res) => {
     try {
       await student.update({ certificate: certificateUrl });
       console.log("✅ Certificate URL saved to database successfully");
-      
+
       // Verify update
-      const updatedStudent = await Student.findOne({ where: { StudentId: studentId } });
-      console.log("  - Verified certificate in DB:", updatedStudent.certificate);
+      const updatedStudent = await Student.findOne({
+        where: { StudentId: studentId },
+      });
+      console.log(
+        "  - Verified certificate in DB:",
+        updatedStudent.certificate
+      );
     } catch (dbError) {
       console.error("❌ Failed to update database:", dbError);
       throw new Error(`Failed to update database: ${dbError.message}`);
@@ -1622,19 +1642,19 @@ exports.saveCertificate = async (req, res) => {
         filename,
         filepath,
         baseUrl,
-        fileSize: buffer.length
-      }
+        fileSize: buffer.length,
+      },
     });
   } catch (error) {
     console.error("❌ ============ ERROR IN SAVE CERTIFICATE ============");
     console.error("  - Error name:", error.name);
     console.error("  - Error message:", error.message);
     console.error("  - Error stack:", error.stack);
-    
-    return res.status(500).json({ 
+
+    return res.status(500).json({
       message: "Failed to save certificate.",
       error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 };

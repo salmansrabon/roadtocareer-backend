@@ -183,6 +183,11 @@ const Student = sequelize.define("Student", {
         type: DataTypes.TEXT('long'),
         allowNull: true
     },
+    exam_answer: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Array of exam submissions: [{exam_id, exam_question, studentId, student_answer, score, feedback, submission_time}]'
+    },
     get_certificate: {
         type: DataTypes.BOOLEAN,
         defaultValue: false

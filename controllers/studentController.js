@@ -653,6 +653,7 @@ exports.getStudentById = async (req, res) => {
         "mobile",
         "address",
         "university",
+        "courseId",
         "batch_no",
         "previous_batch_no",
         "previous_course_id",

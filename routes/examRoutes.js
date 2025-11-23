@@ -6,6 +6,7 @@ const { authenticateUser, requireAdmin } = require("../middlewares/authMiddlewar
 const examQuestionController = require("../controllers/examQuestionController");
 const examConfigController = require("../controllers/examConfigController");
 const examSubmissionController = require("../controllers/examSubmissionController");
+const examAIEvaluationController = require("../controllers/examAIEvaluationController");
 
 // ==============================================
 // EXAM QUESTION ROUTES (Admin Only)
@@ -73,5 +74,15 @@ router.get("/evaluate/:examId/:studentId", authenticateUser, requireAdmin, examS
 
 // Evaluate student submission (Admin only)
 router.put("/evaluate/:examId/:studentId", authenticateUser, requireAdmin, examSubmissionController.evaluateStudentSubmission);
+
+// ==============================================
+// AI EVALUATION ROUTES (Admin Only)
+// ==============================================
+
+// AI evaluation for a single question (Admin only)
+router.post("/ai-evaluate/:examId/:studentId", authenticateUser, requireAdmin, examAIEvaluationController.evaluateWithAI);
+
+// AI evaluation for all questions (Admin only)
+router.post("/ai-evaluate-all/:examId/:studentId", authenticateUser, requireAdmin, examAIEvaluationController.evaluateAllWithAI);
 
 module.exports = router;

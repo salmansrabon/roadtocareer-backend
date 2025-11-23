@@ -3,6 +3,7 @@ const ExamQuestion = require("../models/ExamQuestion");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
 const { Op } = require("sequelize");
+const { sendEmail } = require("../utils/emailHelper");
 
 // Get Exam for Student (without hints)
 exports.getExamForStudent = async (req, res) => {
@@ -342,6 +343,34 @@ exports.evaluateStudentSubmission = async (req, res) => {
         if (!verifyExamSubmission || !verifyExamSubmission.is_evaluated) {
             console.error("WARNING: Evaluation was not saved properly!");
             throw new Error("Failed to save evaluation to database");
+        }
+
+        // Send email notification to student
+        try {
+            const examTitle = verifyExamSubmission.exam_title || 'Your Exam';
+            const maxPossibleScore = verifyExamSubmission.answers.reduce((sum, ans) => sum + (ans.max_score || 0), 0);
+            
+            const emailSubject = `Exam Evaluation Complete - ${examTitle}`;
+            const emailBody = `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <h2 style="color: #2c5282;">Hello ${student.student_name},</h2>
+                    
+                    <p>Your exam submission has been reviewed. Your score is <strong>${totalScore}/${maxPossibleScore}</strong>.</p>
+                    
+                    <p>Please login to your portal and see your detailed review.</p>
+                    
+                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <p>Regards,<br>
+                        <strong>Team Road to SDET</strong></p>
+                    </div>
+                </div>
+            `;
+
+            await sendEmail(student.email, emailSubject, emailBody, contentType = "text/html");
+            console.log(`Email sent successfully to ${student.email}`);
+        } catch (emailError) {
+            console.error("Error sending email notification:", emailError);
+            // Don't fail the evaluation if email fails - just log the error
         }
 
         res.status(200).json({

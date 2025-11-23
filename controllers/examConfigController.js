@@ -34,9 +34,9 @@ exports.createExamConfig = async (req, res) => {
             });
         }
 
-        if (startDate < new Date()) {
+        if (endDate <= new Date()) {
             return res.status(400).json({
-                message: "Start datetime cannot be in the past"
+                message: "End datetime must be in the future"
             });
         }
 

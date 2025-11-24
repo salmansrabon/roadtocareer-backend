@@ -234,13 +234,17 @@ exports.getActiveExamsForStudent = async (req, res) => {
         }
 
         // Get active exams for student's course
+        // Create current time in the same format as stored exam times (local time as UTC)
         const now = new Date();
+        const localTimeAsUTC = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 
+                                       now.getHours(), now.getMinutes(), now.getSeconds());
+        
         const activeExams = await ExamConfig.findAll({
             where: {
                 courseId: student.CourseId,
                 isActive: true,
-                start_datetime: { [Op.lte]: now },
-                end_datetime: { [Op.gte]: now }
+                start_datetime: { [Op.lte]: localTimeAsUTC },
+                end_datetime: { [Op.gte]: localTimeAsUTC }
             },
             include: [{
                 model: Course,

@@ -234,17 +234,15 @@ exports.getActiveExamsForStudent = async (req, res) => {
         }
 
         // Get active exams for student's course
-        // Create current time in the same format as stored exam times (local time as UTC)
+        // Use current time directly - let database handle the comparison
         const now = new Date();
-        const localTimeAsUTC = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 
-                                       now.getHours(), now.getMinutes(), now.getSeconds());
+        console.log("Current server time for exam filtering:", now);
         
-        const activeExams = await ExamConfig.findAll({
+        // First get all active exams for debugging
+        const allActiveExams = await ExamConfig.findAll({
             where: {
                 courseId: student.CourseId,
-                isActive: true,
-                start_datetime: { [Op.lte]: localTimeAsUTC },
-                end_datetime: { [Op.gte]: localTimeAsUTC }
+                isActive: true
             },
             include: [{
                 model: Course,
@@ -252,6 +250,36 @@ exports.getActiveExamsForStudent = async (req, res) => {
             }],
             order: [['start_datetime', 'ASC']]
         });
+        
+        console.log("All active exams for course:", JSON.stringify(allActiveExams.map(exam => ({
+            id: exam.id,
+            title: exam.exam_title,
+            start: exam.start_datetime,
+            end: exam.end_datetime,
+            isActive: exam.isActive
+        })), null, 2));
+        
+        // Filter exams that are currently active based on time
+        const activeExams = await ExamConfig.findAll({
+            where: {
+                courseId: student.CourseId,
+                isActive: true,
+                start_datetime: { [Op.lte]: now },
+                end_datetime: { [Op.gte]: now }
+            },
+            include: [{
+                model: Course,
+                attributes: ['courseId', 'course_title', 'batch_no']
+            }],
+            order: [['start_datetime', 'ASC']]
+        });
+        
+        console.log("Time-filtered active exams:", JSON.stringify(activeExams.map(exam => ({
+            id: exam.id,
+            title: exam.exam_title,
+            start: exam.start_datetime,
+            end: exam.end_datetime
+        })), null, 2));
 
         res.status(200).json({
             message: "Active exams retrieved successfully",

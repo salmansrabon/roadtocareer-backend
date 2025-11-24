@@ -234,12 +234,13 @@ exports.getActiveExamsForStudent = async (req, res) => {
         }
 
         // Get active exams for student's course
-        // Use current time directly - let database handle the comparison
+        // Use UTC time for consistent global comparison - database should store UTC times
         const now = new Date();
-        console.log("Current server time for exam filtering:", now);
+        console.log("Server UTC time:", now.toISOString());
+        console.log("Server local time:", now.toString());
         
-        // First get all active exams for debugging
-        const allActiveExams = await ExamConfig.findAll({
+        // Get all exams for this course first
+        const allExams = await ExamConfig.findAll({
             where: {
                 courseId: student.CourseId,
                 isActive: true
@@ -251,15 +252,17 @@ exports.getActiveExamsForStudent = async (req, res) => {
             order: [['start_datetime', 'ASC']]
         });
         
-        console.log("All active exams for course:", JSON.stringify(allActiveExams.map(exam => ({
+        console.log("All active exams for course:", JSON.stringify(allExams.map(exam => ({
             id: exam.id,
             title: exam.exam_title,
             start: exam.start_datetime,
             end: exam.end_datetime,
+            startISO: new Date(exam.start_datetime).toISOString(),
+            endISO: new Date(exam.end_datetime).toISOString(),
             isActive: exam.isActive
         })), null, 2));
         
-        // Filter exams that are currently active based on time
+        // Filter exams that are currently active based on UTC time
         const activeExams = await ExamConfig.findAll({
             where: {
                 courseId: student.CourseId,
@@ -278,7 +281,9 @@ exports.getActiveExamsForStudent = async (req, res) => {
             id: exam.id,
             title: exam.exam_title,
             start: exam.start_datetime,
-            end: exam.end_datetime
+            end: exam.end_datetime,
+            startISO: new Date(exam.start_datetime).toISOString(),
+            endISO: new Date(exam.end_datetime).toISOString()
         })), null, 2));
 
         res.status(200).json({

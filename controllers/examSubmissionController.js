@@ -38,16 +38,20 @@ exports.getExamForStudent = async (req, res) => {
         }
 
         // Check if exam is active and within time range
+        // Convert current time to Bangladesh timezone for comparison (same as in examConfigController)
         const now = new Date();
+        const bangladeshOffset = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+        const nowInBangladesh = new Date(now.getTime() + bangladeshOffset);
+        
         if (!examConfig.isActive) {
             return res.status(403).json({ message: "Exam is not active" });
         }
 
-        if (now < examConfig.start_datetime) {
+        if (nowInBangladesh < examConfig.start_datetime) {
             return res.status(403).json({ message: "Exam has not started yet" });
         }
 
-        if (now > examConfig.end_datetime) {
+        if (nowInBangladesh > examConfig.end_datetime) {
             return res.status(403).json({ message: "Exam has ended" });
         }
 

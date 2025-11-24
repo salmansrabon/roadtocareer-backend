@@ -262,13 +262,20 @@ exports.getActiveExamsForStudent = async (req, res) => {
             isActive: exam.isActive
         })), null, 2));
         
-        // Filter exams that are currently active based on UTC time
+        // The database stores times as UTC, but they were created as local Bangladesh time
+        // So we need to treat the stored UTC times as if they were local times
+        // Convert current UTC time to Bangladesh timezone offset for comparison
+        const bangladeshOffset = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+        const nowInBangladesh = new Date(now.getTime() + bangladeshOffset);
+        console.log("Current time adjusted for Bangladesh comparison:", nowInBangladesh.toISOString());
+        
+        // Filter exams that are currently active - treating stored times as Bangladesh local
         const activeExams = await ExamConfig.findAll({
             where: {
                 courseId: student.CourseId,
                 isActive: true,
-                start_datetime: { [Op.lte]: now },
-                end_datetime: { [Op.gte]: now }
+                start_datetime: { [Op.lte]: nowInBangladesh },
+                end_datetime: { [Op.gte]: nowInBangladesh }
             },
             include: [{
                 model: Course,
@@ -277,7 +284,7 @@ exports.getActiveExamsForStudent = async (req, res) => {
             order: [['start_datetime', 'ASC']]
         });
         
-        console.log("Time-filtered active exams:", JSON.stringify(activeExams.map(exam => ({
+        console.log("Bangladesh time-filtered active exams:", JSON.stringify(activeExams.map(exam => ({
             id: exam.id,
             title: exam.exam_title,
             start: exam.start_datetime,

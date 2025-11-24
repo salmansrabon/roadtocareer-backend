@@ -34,11 +34,7 @@ exports.createExamConfig = async (req, res) => {
             });
         }
 
-        if (endDate <= new Date()) {
-            return res.status(400).json({
-                message: "End datetime must be in the future"
-            });
-        }
+        // Removed future date validation - allow creating exams with past dates (will show as expired)
 
         // Check if course exists
         const course = await Course.findByPk(courseId);

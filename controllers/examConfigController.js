@@ -312,7 +312,7 @@ exports.getActiveExamsForStudent = async (req, res) => {
 exports.getExamSubmissions = async (req, res) => {
     try {
         const { examId } = req.params;
-        const { page = 1, limit = 20 } = req.query;
+        const { page = 1, limit = 20, filter = 'all' } = req.query;
         const offset = (page - 1) * limit;
 
         // Get exam configuration
@@ -327,18 +327,66 @@ exports.getExamSubmissions = async (req, res) => {
             return res.status(404).json({ message: "Exam configuration not found" });
         }
 
-        // Get all students for this course
-        const { count, rows: students } = await Student.findAndCountAll({
+        // First, get total statistics across ALL students (not paginated)
+        const allStudents = await Student.findAll({
             where: { CourseId: examConfig.courseId },
+            attributes: ['StudentId', 'exam_answer']
+        });
+
+        // Calculate total statistics
+        let totalSubmitted = 0;
+        let totalEvaluated = 0;
+        
+        allStudents.forEach(student => {
+            const examAnswers = student.exam_answer || [];
+            const examSubmission = examAnswers.find(answer => 
+                answer.exam_id === parseInt(examId)
+            );
+            
+            if (examSubmission) {
+                totalSubmitted++;
+                if (examSubmission.is_evaluated) {
+                    totalEvaluated++;
+                }
+            }
+        });
+
+        // Apply filtering logic
+        let allFilteredStudents = allStudents.map(student => {
+            const examAnswers = student.exam_answer || [];
+            const examSubmission = examAnswers.find(answer => 
+                answer.exam_id === parseInt(examId)
+            );
+            return {
+                StudentId: student.StudentId,
+                hasSubmitted: !!examSubmission
+            };
+        });
+
+        if (filter === 'submitted') {
+            allFilteredStudents = allFilteredStudents.filter(student => student.hasSubmitted);
+        } else if (filter === 'not-submitted') {
+            allFilteredStudents = allFilteredStudents.filter(student => !student.hasSubmitted);
+        }
+
+        // Get filtered student IDs for pagination
+        const filteredStudentIds = allFilteredStudents.map(s => s.StudentId);
+        const filteredOffset = (parseInt(page) - 1) * parseInt(limit);
+        const paginatedStudentIds = filteredStudentIds.slice(filteredOffset, filteredOffset + parseInt(limit));
+
+        // Get detailed student data for current page
+        const { rows: students } = await Student.findAndCountAll({
+            where: { 
+                CourseId: examConfig.courseId,
+                StudentId: { [Op.in]: paginatedStudentIds }
+            },
             attributes: [
                 'id', 'StudentId', 'student_name', 'email', 'batch_no', 'exam_answer'
             ],
-            limit: parseInt(limit),
-            offset: parseInt(offset),
             order: [['student_name', 'ASC']]
         });
 
-        // Filter students who have submitted this exam
+        // Format students with submission data
         const studentsWithSubmissions = students.map(student => {
             const examAnswers = student.exam_answer || [];
             const examSubmission = examAnswers.find(answer => 
@@ -352,17 +400,26 @@ exports.getExamSubmissions = async (req, res) => {
             };
         });
 
+        const filteredPagination = {
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(filteredStudentIds.length / parseInt(limit)),
+            totalItems: filteredStudentIds.length,
+            itemsPerPage: parseInt(limit)
+        };
+
         res.status(200).json({
             message: "Exam submissions retrieved successfully",
             data: {
                 examConfig,
                 students: studentsWithSubmissions,
-                pagination: {
-                    currentPage: parseInt(page),
-                    totalPages: Math.ceil(count / limit),
-                    totalItems: count,
-                    itemsPerPage: parseInt(limit)
-                }
+                statistics: {
+                    totalStudents: allStudents.length,
+                    totalSubmitted: totalSubmitted,
+                    totalEvaluated: totalEvaluated,
+                    totalNotSubmitted: allStudents.length - totalSubmitted
+                },
+                pagination: filteredPagination,
+                filter: filter
             }
         });
 

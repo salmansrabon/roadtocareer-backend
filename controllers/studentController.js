@@ -577,8 +577,8 @@ exports.getQaTalent = async (req, res) => {
       include: includeClause,
     });
 
-    // ✅ Now fetch paginated data
-    const students = await Student.findAll({
+    // ✅ Now fetch paginated data with all fields first
+    const studentsRaw = await Student.findAll({
       where: whereClause,
       attributes: [
         "StudentId",
@@ -626,6 +626,27 @@ exports.getQaTalent = async (req, res) => {
       limit: limitNumber,
     });
 
+    // ✅ Filter private data based on privacy settings before sending to frontend
+    const students = studentsRaw.map(student => {
+      const studentData = student.toJSON();
+      
+      // ✅ Respect privacy settings - only include private fields if they are marked as public
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
+      }
+      if (!studentData.isMobilePublic) {
+        delete studentData.mobile;
+      }
+      if (!studentData.isLinkedInPublic) {
+        delete studentData.linkedin;
+      }
+      if (!studentData.isGithubPublic) {
+        delete studentData.github;
+      }
+      
+      return studentData;
+    });
+
     return res.status(200).json({
       totalStudents,
       totalPages: Math.ceil(totalStudents / limitNumber),
@@ -643,7 +664,7 @@ exports.getStudentById = async (req, res) => {
     const { studentId } = req.params;
 
     // ✅ Find Student with Related Data
-    const student = await Student.findOne({
+    const studentRaw = await Student.findOne({
       where: { StudentId: studentId },
       attributes: [
         "StudentId",
@@ -731,18 +752,36 @@ exports.getStudentById = async (req, res) => {
       ],
     });
 
-    if (!student) {
+    if (!studentRaw) {
       return res.status(404).json({ message: "Student not found" });
     }
+
+    // ✅ Convert to JSON and filter private data based on privacy settings
+    const studentData = studentRaw.toJSON();
+    
+    // ✅ Respect privacy settings - only include private fields if they are marked as public
+    if (!studentData.isEmailPublic) {
+      delete studentData.email;
+    }
+    if (!studentData.isMobilePublic) {
+      delete studentData.mobile;
+    }
+    if (!studentData.isLinkedInPublic) {
+      delete studentData.linkedin;
+    }
+    if (!studentData.isGithubPublic) {
+      delete studentData.github;
+    }
+
     // ✅ Determine correct fee based on profession
     const courseFee =
-      student.profession === "Job Holder"
-        ? student.Package?.jobholderFee
-        : student.Package?.studentFee;
+      studentRaw.profession === "Job Holder"
+        ? studentRaw.Package?.jobholderFee
+        : studentRaw.Package?.studentFee;
 
-    // ✅ Send Response
+    // ✅ Send Response with filtered data
     res.status(200).json({
-      ...student.toJSON(),
+      ...studentData,
       courseFee, // ✅ Only return the correct fee dynamically
     });
   } catch (error) {

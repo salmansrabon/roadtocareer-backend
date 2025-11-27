@@ -570,9 +570,28 @@ Response: {"lookingForJob": "Yes"}`;
           .sort((a, b) => b.qualityScore - a.qualityScore)
           .slice(0, maxReturn);
 
+        // ✅ Filter private data based on privacy settings before sending to frontend
+        const filteredFallbackTop = fallbackTop.map(studentData => {
+          // ✅ Respect privacy settings - only include private fields if they are marked as public
+          if (!studentData.isEmailPublic) {
+            delete studentData.email;
+          }
+          if (!studentData.isMobilePublic) {
+            delete studentData.mobile;
+          }
+          if (!studentData.isLinkedInPublic) {
+            delete studentData.linkedin;
+          }
+          if (!studentData.isGithubPublic) {
+            delete studentData.github;
+          }
+          
+          return studentData;
+        });
+
         return res.status(200).json({
-          totalStudents: fallbackTop.length,
-          students: fallbackTop,
+          totalStudents: filteredFallbackTop.length,
+          students: filteredFallbackTop,
           searchParams,
           originalQuery: query,
           isBestSearch: true,
@@ -589,14 +608,33 @@ Response: {"lookingForJob": "Yes"}`;
         });
       }
 
+      // ✅ Filter private data based on privacy settings before sending to frontend
+      const filteredTopStudents = topStudents.map(studentData => {
+        // ✅ Respect privacy settings - only include private fields if they are marked as public
+        if (!studentData.isEmailPublic) {
+          delete studentData.email;
+        }
+        if (!studentData.isMobilePublic) {
+          delete studentData.mobile;
+        }
+        if (!studentData.isLinkedInPublic) {
+          delete studentData.linkedin;
+        }
+        if (!studentData.isGithubPublic) {
+          delete studentData.github;
+        }
+        
+        return studentData;
+      });
+
       return res.status(200).json({
-        totalStudents: topStudents.length,
-        students: topStudents,
+        totalStudents: filteredTopStudents.length,
+        students: filteredTopStudents,
         searchParams,
         originalQuery: query,
         isBestSearch: true,
         requestedCount: requestedCount || null,
-        aiMessage: topStudents.length > 0 ? "Here are the best matching candidates based on your requirements." : "No matching candidates found.",
+        aiMessage: filteredTopStudents.length > 0 ? "Here are the best matching candidates based on your requirements." : "No matching candidates found.",
         rankingCriteria: {
           verified: "50 points",
           istqbCertified: "20 points",
@@ -1013,9 +1051,28 @@ Response: {"lookingForJob": "Yes"}`;
         .sort((a, b) => b.qualityScore - a.qualityScore)
         .slice(0, fallbackMax);
 
+      // ✅ Filter private data based on privacy settings before sending to frontend
+      const filteredBestMatching = bestMatchingStudents.map(studentData => {
+        // ✅ Respect privacy settings - only include private fields if they are marked as public
+        if (!studentData.isEmailPublic) {
+          delete studentData.email;
+        }
+        if (!studentData.isMobilePublic) {
+          delete studentData.mobile;
+        }
+        if (!studentData.isLinkedInPublic) {
+          delete studentData.linkedin;
+        }
+        if (!studentData.isGithubPublic) {
+          delete studentData.github;
+        }
+        
+        return studentData;
+      });
+
       return res.status(200).json({
-        totalStudents: bestMatchingStudents.length,
-        students: bestMatchingStudents,
+        totalStudents: filteredBestMatching.length,
+        students: filteredBestMatching,
         searchParams,
         originalQuery: query,
         isFallbackSearch: true,
@@ -1025,14 +1082,35 @@ Response: {"lookingForJob": "Yes"}`;
       });
     }
 
+    // ✅ Filter private data based on privacy settings before sending to frontend
+    const filteredStudents = students.map(student => {
+      const studentData = student.toJSON();
+      
+      // ✅ Respect privacy settings - only include private fields if they are marked as public
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
+      }
+      if (!studentData.isMobilePublic) {
+        delete studentData.mobile;
+      }
+      if (!studentData.isLinkedInPublic) {
+        delete studentData.linkedin;
+      }
+      if (!studentData.isGithubPublic) {
+        delete studentData.github;
+      }
+      
+      return studentData;
+    });
+
     return res.status(200).json({
-      totalStudents: students.length,
-      students,
+      totalStudents: filteredStudents.length,
+      students: filteredStudents,
       searchParams, // Return extracted parameters for debugging
       originalQuery: query,
       requestedCount: requestedCount || null,
       aiMessage:
-        students.length > 0
+        filteredStudents.length > 0
           ? "Here are the top results based on your query."
           : "No matching profiles found.",
     });
@@ -1230,7 +1308,7 @@ exports.searchQATalent = async (req, res) => {
     });
 
     // ✅ Fetch filtered students
-    const students = await Student.findAll({
+    const studentsRaw = await Student.findAll({
       where: whereClause,
       attributes: [
         "StudentId",
@@ -1279,6 +1357,27 @@ exports.searchQATalent = async (req, res) => {
       ],
       offset,
       limit: limitNumber,
+    });
+
+    // ✅ Filter private data based on privacy settings before sending to frontend
+    const students = studentsRaw.map(student => {
+      const studentData = student.toJSON();
+      
+      // ✅ Respect privacy settings - only include private fields if they are marked as public
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
+      }
+      if (!studentData.isMobilePublic) {
+        delete studentData.mobile;
+      }
+      if (!studentData.isLinkedInPublic) {
+        delete studentData.linkedin;
+      }
+      if (!studentData.isGithubPublic) {
+        delete studentData.github;
+      }
+      
+      return studentData;
     });
 
     return res.status(200).json({

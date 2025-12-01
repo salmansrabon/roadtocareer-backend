@@ -663,6 +663,20 @@ exports.getStudentById = async (req, res) => {
   try {
     const { studentId } = req.params;
 
+    // ✅ Manual optional authentication - check for token but don't require it
+    let isAdmin = false;
+    const token = req.headers.authorization?.split(" ")[1];
+    if (token) {
+      try {
+        const jwt = require("jsonwebtoken");
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        isAdmin = decoded && (decoded.role === "admin" || decoded.role === "teacher");
+      } catch (err) {
+        // Invalid token, treat as non-admin
+        isAdmin = false;
+      }
+    }
+
     // ✅ Find Student with Related Data
     const studentRaw = await Student.findOne({
       where: { StudentId: studentId },
@@ -756,21 +770,23 @@ exports.getStudentById = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
-    // ✅ Convert to JSON and filter private data based on privacy settings
     const studentData = studentRaw.toJSON();
     
-    // ✅ Respect privacy settings - only include private fields if they are marked as public
-    if (!studentData.isEmailPublic) {
-      delete studentData.email;
-    }
-    if (!studentData.isMobilePublic) {
-      delete studentData.mobile;
-    }
-    if (!studentData.isLinkedInPublic) {
-      delete studentData.linkedin;
-    }
-    if (!studentData.isGithubPublic) {
-      delete studentData.github;
+    // ✅ Apply privacy filters only if user is not admin
+    if (!isAdmin) {
+      // Respect privacy settings - only include private fields if they are marked as public
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
+      }
+      if (!studentData.isMobilePublic) {
+        delete studentData.mobile;
+      }
+      if (!studentData.isLinkedInPublic) {
+        delete studentData.linkedin;
+      }
+      if (!studentData.isGithubPublic) {
+        delete studentData.github;
+      }
     }
 
     // ✅ Determine correct fee based on profession
@@ -779,7 +795,7 @@ exports.getStudentById = async (req, res) => {
         ? studentRaw.Package?.jobholderFee
         : studentRaw.Package?.studentFee;
 
-    // ✅ Send Response with filtered data
+    // ✅ Send Response with filtered data (or all data if admin)
     res.status(200).json({
       ...studentData,
       courseFee, // ✅ Only return the correct fee dynamically

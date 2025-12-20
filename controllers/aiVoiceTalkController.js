@@ -10,7 +10,7 @@ const Student = require("../models/Student");
  */
 const createRealtimeSession = async (req, res) => {
   try {
-    const { role = "SDET", level = "Mid", language = "English", questionCount = 1 } = req.body;
+    const { role = "SDET", level = "Mid", language = "English", questionCount = 10 } = req.body;
     
     // Role-specific topic areas and sample questions
     const roleTopics = {
@@ -166,6 +166,16 @@ RULES:
 - CRITICAL: After exactly ${questionCount} technical questions have been answered, immediately provide evaluation
 
 END PROCEDURE (MANDATORY after ${questionCount} technical questions):
+${language === "Bengali" ? `
+1. স্কোর প্রদান: উত্তরের মানের ভিত্তিতে ১০-এর মধ্যে স্কোর দিন (ফরম্যাট: "আপনার স্কোর X/10")
+2. সংক্ষিপ্ত গঠনমূলক ফিডব্যাক প্রদান করুন যা আপনার শক্তিশালী দিক এবং উন্নতির ক্ষেত্রগুলি তুলে ধরে
+3. বলুন: "ইন্টারভিউ সম্পন্ন হয়েছে। আজ আপনার সাথে কথা বলে খুবই ভালো লেগেছে, ধন্যবাদ!"
+4. প্রার্থীকে বন্ধ করতে অনুরোধ করুন: "দয়া করে ইন্টারভিউ বন্ধ করার বাটনে ক্লিক করুন।"
+5. এই পর্যায়ের পর আর কোনো প্রশ্ন করবেন না
+
+উদাহরণ শেষ ফরম্যাট:
+"আপনার উত্তরের ভিত্তিতে, আপনার স্কোর 7/10। আপনি ${role.toLowerCase()} এর মৌলিক বিষয়ের ভালো বোধগম্যতা দেখিয়েছেন এবং ভালো সমস্যা সমাধানের চিন্তাভাবনা প্রদর্শন করেছেন। পরবর্তী ধাপে অটোমেশন ফ্রেমওয়ার্কে আরো গভীরে যাওয়ার পরামর্শ দেবো। ইন্টারভিউ সম্পন্ন হয়েছে। আজ আপনার সাথে কথা বলে খুবই ভালো লেগেছে, ধন্যবাদ! দয়া করে ইন্টারভিউ বন্ধ করার বাটনে ক্লিক করুন।"
+` : `
 1. Provide score out of 10 based on answers quality (format: "Your score is X/10")
 2. Give brief constructive feedback highlighting strengths and areas for improvement
 3. Say: "Interview completed. Thank you for your time today, it was great talking with you!"
@@ -174,6 +184,7 @@ END PROCEDURE (MANDATORY after ${questionCount} technical questions):
 
 EXAMPLE END FORMAT:
 "Based on your responses, your score is 7/10. You demonstrated solid understanding of ${role.toLowerCase()} fundamentals and showed good problem-solving thinking. I'd suggest diving deeper into automation frameworks for your next steps. Interview completed. Thank you for your time today, it was great talking with you! Please click the Stop Interview button to end the session."
+`}
 `;
 
     const response = await axios.post(
@@ -425,8 +436,9 @@ const processTranscript = async (req, res) => {
     if (fullTranscript.trim().length > 0) {
       console.log("🔍 ATTEMPTING SCORE EXTRACTION FROM:", fullTranscript);
       
-      // Enhanced production-grade robust score patterns
+      // Enhanced production-grade robust score patterns (English + Bengali)
       const scorePatterns = [
+        // English patterns
         /(?:your\s+)?score\s*(?:is|:)?\s*(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
         /\b(\d+)\s*(?:\/|out\s+of|over)\s*10\b/i,
         /(?:rate|rating|grade)\s*(?:you|your)?\s*(?:at\s+)?(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
@@ -436,7 +448,15 @@ const processTranscript = async (req, res) => {
         /based\s+on\s+your\s+responses?\s*,?\s*(?:your\s+score\s+is\s+)?(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
         /(?:final|overall)\s+(?:score|rating)\s*:?\s*(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
         /(\d+)\s*points?\s+out\s+of\s+10/i,
-        /(\d+)\s*(?:\/|out\s+of)\s*10\s*(?:score|points?|rating)?/i
+        /(\d+)\s*(?:\/|out\s+of)\s*10\s*(?:score|points?|rating)?/i,
+        
+        // Bengali patterns
+        /(?:আপনার\s+)?স্কোর\s*(?:হলো|হল|:)?\s*(\d+)\s*(?:\/|এর\s+মধ্যে)\s*10/i,
+        /(\d+)\s*(?:\/|এর\s+মধ্যে)\s*10\s*(?:স্কোর|পয়েন্ট)?/i,
+        /(?:স্কোর|রেটিং)\s*(?:আপনার)?\s*(\d+)\s*(?:\/|এর\s+মধ্যে)\s*10/i,
+        /উত্তরের\s+ভিত্তিতে\s*,?\s*(?:আপনার\s+স্কোর\s*)?(\d+)\s*(?:\/|এর\s+মধ্যে)\s*10/i,
+        /(\d+)\s*পয়েন্ট\s+(?:১০|10)\s*এর\s+মধ্যে/i,
+        /মোট\s*(\d+)\s*(?:\/|এর\s+মধ্যে)\s*(?:১০|10)/i
       ];
 
       for (let i = 0; i < scorePatterns.length; i++) {
@@ -492,11 +512,18 @@ ${fullTranscript}
       }
     }
 
-    // Enhanced feedback extraction
+    // Enhanced feedback extraction (English + Bengali)
     const feedbackPatterns = [
+      // English patterns
       /(?:score\s*(?:is|:)?\s*\d+\s*(?:\/|out of|over)\s*10)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
       /(?:\d+\s*(?:\/|out of|over)\s*10)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
-      /(?:score)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i
+      /(?:score)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
+      
+      // Bengali patterns  
+      /(?:স্কোর\s*(?:হলো|হল|:)?\s*\d+\s*(?:\/|এর\s+মধ্যে)\s*10)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i,
+      /(?:\d+\s*(?:\/|এর\s+মধ্যে)\s*10)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i,
+      /(?:উত্তরের\s+ভিত্তিতে)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i,
+      /(?:স্কোর)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i
     ];
 
     for (const pattern of feedbackPatterns) {

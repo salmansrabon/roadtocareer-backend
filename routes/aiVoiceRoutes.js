@@ -1,8 +1,11 @@
 const express = require("express");
-const router = express.Router();
-const { createRealtimeSession } = require("../controllers/aiVoiceTalkController");
+const { createRealtimeSession, saveInterviewResult, getInterviewAttempts, processTranscript } = require("../controllers/aiVoiceTalkController");
 
-// POST /api/ai-voice/realtime-session - Create realtime interview session
+const router = express.Router();
+
 router.post("/realtime-session", createRealtimeSession);
+router.post("/save-result", saveInterviewResult);
+router.get("/interview-attempts/:studentId", getInterviewAttempts);
+router.post("/process-transcript", processTranscript);
 
 module.exports = router;

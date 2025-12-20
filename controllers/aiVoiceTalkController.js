@@ -1,5 +1,8 @@
 // controllers/aiVoiceTalkController.js
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const Student = require("../models/Student");
 
 /**
  * Create Realtime AI Voice Interview Session
@@ -107,6 +110,10 @@ const createRealtimeSession = async (req, res) => {
 
     const topics = roleTopics[role] || roleTopics["SDET"];
     
+    // Randomly shuffle and select topics for this session
+    const shuffledTopics = [...topics].sort(() => Math.random() - 0.5);
+    const selectedTopics = shuffledTopics.slice(0, questionCount);
+    
     const systemPrompt = `
 You are a Senior ${role} technical interviewer for a ${level} position.
 Language: ${language}.
@@ -128,8 +135,10 @@ INTERVIEW FLOW (STRICT):
    - Ask ONE question at a time
    - Keep track internally: after ${questionCount} technical questions, STOP asking more questions
 
-TOPIC AREAS FOR ${role} (${questionCount} TOTAL):
-${topics.slice(0, questionCount).map((topic, index) => `- ${topic}`).join('\n')}
+SELECTED TOPIC AREAS FOR THIS INTERVIEW (EXACTLY ${questionCount} QUESTIONS):
+${selectedTopics.map((topic, index) => `${index + 1}. ${topic}`).join('\n')}
+
+CRITICAL: You MUST ask questions based on these ${questionCount} topics only. After covering all ${questionCount} topics, immediately end the interview.
 
 NATURAL CONVERSATION HANDLING:
 - When candidate speaks, listen completely until they finish
@@ -207,4 +216,369 @@ EXAMPLE END FORMAT:
   }
 };
 
-module.exports = { createRealtimeSession };
+/**
+ * Save AI Voice Interview Result
+ * POST /api/ai-voice/save-result
+ */
+const saveInterviewResult = async (req, res) => {
+  try {
+    const { 
+      studentId, 
+      score, 
+      role, 
+      level, 
+      feedback, 
+      topics_covered, 
+      session_duration 
+    } = req.body;
+
+    // Fix validation bug - score = 0 is valid!
+    if (!studentId || score === null || score === undefined || !role || !level) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: studentId, score, role, level"
+      });
+    }
+
+    // Guard against NaN
+    const parsedScore = parseInt(score);
+    if (Number.isNaN(parsedScore)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid score format",
+        rawScore: score
+      });
+    }
+
+    // Find student by StudentId
+    const student = await Student.findOne({ 
+      where: { StudentId: studentId } 
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: "Student not found"
+      });
+    }
+
+    // Create new interview result object
+    const newInterviewResult = {
+      score: parseInt(score),
+      role,
+      level,
+      feedback: feedback || "",
+      interview_date: new Date().toISOString(),
+      topics_covered: topics_covered || [],
+      session_duration: session_duration || null
+    };
+
+    // Get existing interview results or initialize empty array
+    let existingResults = [];
+    
+    try {
+      // Safely parse existing JSON or initialize empty array
+      existingResults = student.ai_voice_interviews ? 
+        (Array.isArray(student.ai_voice_interviews) ? 
+          student.ai_voice_interviews : 
+          JSON.parse(JSON.stringify(student.ai_voice_interviews))
+        ) : [];
+    } catch (e) {
+      console.error("Error parsing existing results, initializing empty array:", e);
+      existingResults = [];
+    }
+    
+    // Add new result to the array
+    existingResults.push(newInterviewResult);
+
+    // Aggressive fix for Sequelize JSON array detection
+    student.ai_voice_interviews = [...existingResults];
+    student.changed('ai_voice_interviews', true);
+    await student.save();
+
+    console.log("✅ Successfully saved interview attempt:", {
+      studentId,
+      totalAttempts: existingResults.length,
+      newAttempt: newInterviewResult,
+      currentDbValue: student.ai_voice_interviews
+    });
+
+    res.json({
+      success: true,
+      message: "Interview result saved successfully",
+      result: newInterviewResult
+    });
+
+  } catch (err) {
+    console.error("Save Interview Result Error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to save interview result"
+    });
+  }
+};
+
+/**
+ * Get Student Interview Attempts
+ * GET /api/ai-voice/interview-attempts/:studentId
+ */
+const getInterviewAttempts = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    // Find student by StudentId
+    const student = await Student.findOne({ 
+      where: { StudentId: studentId } 
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: "Student not found"
+      });
+    }
+
+    // Get interview attempts and sort by latest first
+    const interviewAttempts = student.ai_voice_interviews || [];
+    const sortedAttempts = interviewAttempts.sort((a, b) => 
+      new Date(b.interview_date) - new Date(a.interview_date)
+    );
+
+    res.json({
+      success: true,
+      attempts: sortedAttempts,
+      totalAttempts: sortedAttempts.length
+    });
+
+  } catch (err) {
+    console.error("Get Interview Attempts Error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch interview attempts"
+    });
+  }
+};
+
+/**
+ * Process Interview Transcript and Extract Score
+ * POST /api/ai-voice/process-transcript
+ */
+const processTranscript = async (req, res) => {
+  try {
+    const { 
+      studentId, 
+      sessionId,
+      transcript,
+      role, 
+      level, 
+      topics_covered, 
+      session_duration 
+    } = req.body;
+
+    // Validate required fields (transcript can be empty array)
+    if (!studentId || !sessionId || !role || !level) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: studentId, sessionId, role, level"
+      });
+    }
+
+    // Ensure transcript is array (can be empty)
+    const transcriptArray = Array.isArray(transcript) ? transcript : [];
+
+    // Save transcript to temp file
+    const tempDir = path.join(__dirname, '../temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const transcriptFile = path.join(tempDir, `interview_${sessionId}.txt`);
+    
+    // Format transcript for file
+    let transcriptText = `Interview Transcript - Session: ${sessionId}\n`;
+    transcriptText += `Student: ${studentId}\n`;
+    transcriptText += `Role: ${role} | Level: ${level}\n`;
+    transcriptText += `Date: ${new Date().toISOString()}\n\n`;
+    transcriptText += "=== CONVERSATION ===\n\n";
+
+    transcriptArray.forEach(entry => {
+      transcriptText += `[${entry.timestamp}] ${(entry.role || "unknown").toUpperCase()}: ${entry.text || "No text"}\n\n`;
+    });
+
+    // Write transcript to file
+    fs.writeFileSync(transcriptFile, transcriptText, 'utf8');
+
+    // Extract score using robust regex patterns (handle empty transcript)
+    const fullTranscript = transcriptArray.length > 0 ? 
+      transcriptArray.map(entry => entry.text || "").join(' ') : 
+      "";
+    
+    // Debug log to confirm transcript content
+    console.log("FULL TRANSCRIPT >>>", fullTranscript.substring(0, 500));
+    
+    let score = null;
+    let feedback = "";
+
+    // Production-grade robust score patterns
+    const scorePatterns = [
+      /score\s*(?:is|:)?\s*(\d+)\s*(?:\/|out of|over)\s*10/i,
+      /\b(\d+)\s*(?:\/|out of|over)\s*10\b/i,
+      /rate\s*(?:you|your)?\s*(\d+)\s*(?:\/|out of|over)\s*10/i,
+      /give\s*(?:you|your)?\s*(\d+)\s*(?:\/|out of|over)\s*10/i,
+      /scored?\s*(\d+)\s*(?:\/|out of|over)\s*10/i
+    ];
+
+    for (const pattern of scorePatterns) {
+      const match = fullTranscript.match(pattern);
+      if (match) {
+        const extractedScore = parseInt(match[1]);
+        if (!isNaN(extractedScore) && extractedScore >= 0 && extractedScore <= 10) {
+          score = extractedScore;
+          break;
+        }
+      }
+    }
+
+    // AI fallback for score extraction if regex fails
+    if (score === null) {
+      try {
+        const scorePrompt = `
+Extract ONLY the numeric score (0-10) from the following interview conclusion.
+Return JSON: { "score": number }
+
+Text:
+${fullTranscript}
+`;
+
+        const aiScoreResponse = await axios.post(
+          "https://api.openai.com/v1/chat/completions",
+          {
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: scorePrompt }],
+            response_format: { type: "json_object" }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+
+        const aiResult = JSON.parse(aiScoreResponse.data.choices[0].message.content);
+        if (aiResult.score !== undefined && aiResult.score !== null && !isNaN(aiResult.score) && aiResult.score >= 0 && aiResult.score <= 10) {
+          score = parseInt(aiResult.score);
+        }
+      } catch (aiError) {
+        console.error("AI score extraction failed:", aiError);
+      }
+    }
+
+    // Enhanced feedback extraction
+    const feedbackPatterns = [
+      /(?:score\s*(?:is|:)?\s*\d+\s*(?:\/|out of|over)\s*10)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
+      /(?:\d+\s*(?:\/|out of|over)\s*10)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
+      /(?:score)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i
+    ];
+
+    for (const pattern of feedbackPatterns) {
+      const match = fullTranscript.match(pattern);
+      if (match && match[1] && match[1].trim().length > 10) {
+        feedback = match[1].trim();
+        // Clean up feedback
+        feedback = feedback.replace(/please click the stop interview button/i, '').trim();
+        feedback = feedback.replace(/\s+/g, ' '); // Remove extra spaces
+        break;
+      }
+    }
+
+    // Find student by StudentId
+    const student = await Student.findOne({ 
+      where: { StudentId: studentId } 
+    });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: "Student not found"
+      });
+    }
+
+    // Create interview result object (save ALL attempts)
+    const newInterviewResult = {
+      score: score, // Can be null, 0, or valid score
+      role,
+      level,
+      feedback: feedback || "",
+      interview_date: new Date().toISOString(),
+      topics_covered: topics_covered || [],
+      session_duration: session_duration || null,
+      status: score !== null ? 'completed' : 'incomplete', // Track completion status
+      score_extracted: score !== null // Boolean flag for analytics
+    };
+
+    // Get existing interview results or initialize empty array
+    let existingResults = [];
+    
+    try {
+      // Safely parse existing JSON or initialize empty array
+      existingResults = student.ai_voice_interviews ? 
+        (Array.isArray(student.ai_voice_interviews) ? 
+          student.ai_voice_interviews : 
+          JSON.parse(JSON.stringify(student.ai_voice_interviews))
+        ) : [];
+    } catch (e) {
+      console.error("Error parsing existing results, initializing empty array:", e);
+      existingResults = [];
+    }
+    
+    // Add new result to the array
+    existingResults.push(newInterviewResult);
+
+    // Aggressive fix for Sequelize JSON array detection
+    student.ai_voice_interviews = [...existingResults];
+    student.changed('ai_voice_interviews', true);
+    await student.save();
+
+    console.log("✅ Successfully saved interview attempt:", {
+      studentId,
+      totalAttempts: existingResults.length,
+      newAttempt: newInterviewResult,
+      currentDbValue: student.ai_voice_interviews
+    });
+
+    // Clean up temp file (only for completed interviews)
+    if (score !== null) {
+      try {
+        fs.unlinkSync(transcriptFile);
+      } catch (e) {
+        console.error("Error deleting temp file:", e);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: score !== null ? 
+        "Interview completed and result saved successfully" : 
+        "Interview attempt recorded (no score extracted)",
+      result: newInterviewResult,
+      extractedScore: score,
+      extractedFeedback: feedback,
+      transcriptFile: score === null ? transcriptFile : null
+    });
+
+  } catch (err) {
+    console.error("Process Transcript Error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to process transcript"
+    });
+  }
+};
+
+module.exports = { 
+  createRealtimeSession,
+  saveInterviewResult,
+  getInterviewAttempts,
+  processTranscript
+};

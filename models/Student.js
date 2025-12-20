@@ -188,6 +188,11 @@ const Student = sequelize.define("Student", {
         allowNull: true,
         comment: 'Array of exam submissions: [{exam_id, exam_question, studentId, student_answer, score, feedback, submission_time}]'
     },
+    ai_voice_interviews: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'Array of AI voice interview results: [{score, role, level, feedback, interview_date, topics_covered, session_duration}]'
+    },
     get_certificate: {
         type: DataTypes.BOOLEAN,
         defaultValue: false

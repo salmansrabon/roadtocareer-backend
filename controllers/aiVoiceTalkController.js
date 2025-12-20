@@ -415,28 +415,46 @@ const processTranscript = async (req, res) => {
     
     // Debug log to confirm transcript content
     console.log("FULL TRANSCRIPT >>>", fullTranscript.substring(0, 500));
+    console.log("TRANSCRIPT LENGTH:", fullTranscript.length);
+    console.log("TRANSCRIPT ARRAY COUNT:", transcriptArray.length);
     
     let score = null;
     let feedback = "";
 
-    // Production-grade robust score patterns
-    const scorePatterns = [
-      /score\s*(?:is|:)?\s*(\d+)\s*(?:\/|out of|over)\s*10/i,
-      /\b(\d+)\s*(?:\/|out of|over)\s*10\b/i,
-      /rate\s*(?:you|your)?\s*(\d+)\s*(?:\/|out of|over)\s*10/i,
-      /give\s*(?:you|your)?\s*(\d+)\s*(?:\/|out of|over)\s*10/i,
-      /scored?\s*(\d+)\s*(?:\/|out of|over)\s*10/i
-    ];
+    // Only try to extract score if there's actual transcript content
+    if (fullTranscript.trim().length > 0) {
+      console.log("🔍 ATTEMPTING SCORE EXTRACTION FROM:", fullTranscript);
+      
+      // Enhanced production-grade robust score patterns
+      const scorePatterns = [
+        /(?:your\s+)?score\s*(?:is|:)?\s*(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /\b(\d+)\s*(?:\/|out\s+of|over)\s*10\b/i,
+        /(?:rate|rating|grade)\s*(?:you|your)?\s*(?:at\s+)?(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /(?:give|giving)\s*(?:you|your)?\s*(?:a\s+)?(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /(?:scored?|scoring)\s*(?:you\s+)?(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /interview\s+(?:score|rating)\s*:?\s*(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /based\s+on\s+your\s+responses?\s*,?\s*(?:your\s+score\s+is\s+)?(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /(?:final|overall)\s+(?:score|rating)\s*:?\s*(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
+        /(\d+)\s*points?\s+out\s+of\s+10/i,
+        /(\d+)\s*(?:\/|out\s+of)\s*10\s*(?:score|points?|rating)?/i
+      ];
 
-    for (const pattern of scorePatterns) {
-      const match = fullTranscript.match(pattern);
-      if (match) {
-        const extractedScore = parseInt(match[1]);
-        if (!isNaN(extractedScore) && extractedScore >= 0 && extractedScore <= 10) {
-          score = extractedScore;
-          break;
+      for (let i = 0; i < scorePatterns.length; i++) {
+        const pattern = scorePatterns[i];
+        const match = fullTranscript.match(pattern);
+        console.log(`🔎 Testing pattern ${i + 1}: ${pattern}`, match ? `FOUND: ${match[1]}` : "NO MATCH");
+        
+        if (match) {
+          const extractedScore = parseInt(match[1]);
+          if (!isNaN(extractedScore) && extractedScore >= 0 && extractedScore <= 10) {
+            score = extractedScore;
+            console.log("✅ SCORE EXTRACTED:", score);
+            break;
+          }
         }
       }
+    } else {
+      console.log("❌ NO TRANSCRIPT CONTENT TO EXTRACT SCORE FROM");
     }
 
     // AI fallback for score extraction if regex fails

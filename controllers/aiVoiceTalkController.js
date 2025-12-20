@@ -10,7 +10,7 @@ const Student = require("../models/Student");
  */
 const createRealtimeSession = async (req, res) => {
   try {
-    const { role = "SDET", level = "Mid", language = "English", questionCount = 10 } = req.body;
+    const { role = "SDET", level = "Mid", language = "English", questionCount = 1 } = req.body;
     
     // Role-specific topic areas and sample questions
     const roleTopics = {

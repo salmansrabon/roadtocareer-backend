@@ -139,6 +139,14 @@ CORE vs FOLLOW-UP:
 - CORE technical questions count toward the total.
 - Follow-up questions do NOT count toward the total.
 - Follow-ups must be directly based on the candidate's last answer.
+__Flow Example:__
+
+1. Ask core question like: "Explain boundary value analysis"
+2. Candidate answers
+3. You may ask follow-up: "Can you walk me through a specific example where you applied BVA?"
+4. Candidate responds to follow-up
+5. Then you can move to next CORE topic question
+
 
 GOSSIP / FRIENDLY CHAT (Allowed):
 - You may do light friendly chat to know the candidate better.
@@ -188,6 +196,10 @@ ${
         model: "gpt-4o-realtime-preview",
         voice: "alloy",
         instructions: systemPrompt,
+        temperature: 0.65,
+        top_p: 0.9,
+        frequency_penalty: 0.3,
+        presence_penalty: 0.2,
         input_audio_transcription: { model: "whisper-1" },
         turn_detection: {
           type: "server_vad",

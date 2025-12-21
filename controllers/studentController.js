@@ -1573,6 +1573,115 @@ exports.sendContactEmail = async (req, res) => {
   }
 };
 
+// ✅ Get Students with AI Voice Interview History
+exports.getStudentsWithAIInterviews = async (req, res) => {
+  try {
+    const {
+      courseId,
+      batch_no,
+      student_name,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const offset = (pageNumber - 1) * limitNumber;
+
+    let whereClause = {};
+
+    // Basic filters
+    if (courseId) whereClause.CourseId = courseId;
+    if (batch_no) whereClause.batch_no = batch_no;
+    if (student_name)
+      whereClause.student_name = { [Op.like]: `%${student_name}%` };
+
+    // ✅ Filter: Only show students who have AI voice interview history
+    // Check if ai_voice_interviews field is not null and array is not empty
+    whereClause[Op.and] = [
+      Sequelize.literal("ai_voice_interviews IS NOT NULL"),
+      Sequelize.literal("ai_voice_interviews != '[]'"),
+      Sequelize.literal("JSON_LENGTH(ai_voice_interviews) > 0"),
+    ];
+
+    // ✅ Build include clause
+    const includeClause = [
+      {
+        model: Course,
+        attributes: ["courseId", "course_title"],
+      },
+      {
+        model: User,
+        attributes: ["isValid"],
+        required: false,
+      },
+    ];
+
+    // ✅ First get total count with same filters
+    const totalStudents = await Student.count({
+      where: whereClause,
+      include: includeClause,
+    });
+
+    // ✅ Now fetch paginated data
+    const students = await Student.findAll({
+      where: whereClause,
+      attributes: [
+        "StudentId",
+        "student_name",
+        "CourseId",
+        "batch_no",
+        "courseTitle",
+        "ai_voice_interviews",
+        "createdAt",
+      ],
+      include: includeClause,
+      order: [["createdAt", "DESC"]],
+      offset,
+      limit: limitNumber,
+    });
+
+    // ✅ Process students to add mock interview summary
+    const processedStudents = students.map((student) => {
+      const studentData = student.toJSON();
+      const aiInterviews = studentData.ai_voice_interviews || [];
+      
+      // Calculate summary statistics
+      const totalAttempts = aiInterviews.length;
+      const completedAttempts = aiInterviews.filter(
+        (interview) => interview.score !== null && interview.score !== undefined
+      );
+      const averageScore = completedAttempts.length > 0
+        ? (completedAttempts.reduce((sum, interview) => sum + interview.score, 0) / completedAttempts.length).toFixed(1)
+        : "N/A";
+
+      return {
+        ...studentData,
+        mockHistorySummary: {
+          totalAttempts,
+          completedAttempts: completedAttempts.length,
+          averageScore,
+          lastInterviewDate: aiInterviews.length > 0 ? aiInterviews[aiInterviews.length - 1].interview_date : null,
+        },
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      totalStudents,
+      totalPages: Math.ceil(totalStudents / limitNumber),
+      currentPage: pageNumber,
+      students: processedStudents,
+    });
+  } catch (error) {
+    console.error("Error fetching students with AI interviews:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal server error" 
+    });
+  }
+};
+
 // ✅ Save Auto-Generated Certificate PNG
 exports.saveCertificate = async (req, res) => {
   console.log("🎓 ============ SAVE CERTIFICATE REQUEST ============");

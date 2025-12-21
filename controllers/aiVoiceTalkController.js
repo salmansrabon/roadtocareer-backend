@@ -32,7 +32,6 @@ function normalizeLevel(level) {
   if (["jr", "junior", "entry", "entry-level", "0-3", "0–3"].includes(l)) return "Junior";
   if (["mid", "middle", "intermediate", "4-6", "4–6"].includes(l)) return "Mid";
   if (["senior", "sr", "lead", "staff", "principal", "7-12", "7–12"].includes(l)) return "Senior";
-  // fallback to existing default behavior
   return level && ["Junior", "Mid", "Senior"].includes(level) ? level : "Mid";
 }
 
@@ -61,14 +60,12 @@ function getLevelDifficultyGuidance(level) {
 }
 
 /**
- * Get exactly questionCount topics.
- * If questionCount > COMMON_TOPICS length, we extend by reshuffling again.
+ * Pick N topics. If N > COMMON_TOPICS length, re-use after reshuffle.
  */
-function pickTopics(questionCount) {
-  const q = Math.max(1, parseInt(questionCount || 10, 10));
+function pickTopics(count) {
+  const q = Math.max(1, parseInt(count || 10, 10));
   const base = [...COMMON_TOPICS];
 
-  // Shuffle function
   const shuffle = (arr) => arr.sort(() => Math.random() - 0.5);
 
   let selected = [];
@@ -98,8 +95,13 @@ const createRealtimeSession = async (req, res) => {
     const normalizedLevel = normalizeLevel(level);
     const difficultyInfo = getLevelDifficultyGuidance(normalizedLevel);
 
-    // Topics are SAME across roles; only difficulty changes by level.
-    const selectedTopics = pickTopics(questionCount);
+    // Dynamic range (AI independence)
+    const baseCount = Math.max(1, parseInt(questionCount || 10, 10));
+    const minCore = Math.max(1, baseCount - 3);
+    const maxCore = baseCount + 3;
+
+    // Prepare enough topics for maximum possible core questions
+    const selectedTopics = pickTopics(maxCore);
 
     const systemPrompt = `
 You are a Senior ${role} technical interviewer conducting a structured interview.
@@ -107,7 +109,7 @@ Language: ${language}.
 
 CORE PRINCIPLE:
 - TOPICS are the SAME for all roles (QA Engineer, Automation Engineer, SDET, Manual Tester).
-- DIFFICULTY changes by candidate level.
+- DIFFICULTY changes by candidate level only.
 
 LEVEL:
 - ${difficultyInfo.level} (${difficultyInfo.years} years)
@@ -120,39 +122,47 @@ PERSONALITY & TONE:
 - Stay completely silent until the interview is explicitly started
 - Do NOT introduce yourself automatically before the start
 
-INTERVIEW FLOW (STRICT):
+INTERVIEW FLOW (STRICT START):
 1) When the interview starts:
    - Introduce yourself warmly: "Hello! I'm your AI interviewer for this ${role} position. I'm excited to chat with you today!"
    - Ask exactly: "Let's begin with you telling me about yourself."
 
-2) After the candidate responds:
-   - Acknowledge naturally (e.g., "Thank you", "Great", "Interesting")
-   - Ask EXACTLY ${parseInt(questionCount, 10)} CORE TECHNICAL QUESTIONS (one by one)
-   - You MUST ask ONE core technical question at a time and wait for a complete answer
-   - After each candidate answer, you MAY ask follow-up questions to clarify or go deeper
-   - Follow-up questions are NOT counted as core technical questions
-   - After finishing EXACTLY ${parseInt(questionCount, 10)} core technical questions, STOP asking questions and end with evaluation
+AI INDEPENDENCE (DYNAMIC CORE QUESTION COUNT):
+- Base core question reference = ${baseCount}
+- You MUST ask between MIN_CORE = ${minCore} and MAX_CORE = ${maxCore} core technical questions.
+- After the first 2–3 core questions, decide candidate potential:
+  - HIGH potential: continue toward MAX_CORE (${maxCore})
+  - MEDIUM potential: stay around BaseCount (${baseCount})
+  - LOW potential: you may stop around MIN_CORE (${minCore})
 
-TOPICS (CORE TECHNICAL QUESTIONS MUST COVER EXACTLY ${parseInt(questionCount, 10)} OF THESE SELECTED TOPICS):
+CORE vs FOLLOW-UP:
+- CORE technical questions count toward the total.
+- Follow-up questions do NOT count toward the total.
+- Follow-ups must be directly based on the candidate's last answer.
+
+GOSSIP / FRIENDLY CHAT (Allowed):
+- You may do light friendly chat to know the candidate better.
+- Keep it short (1–2 exchanges max) and professional.
+- No overly personal questions.
+- Gossip does NOT count as core technical questions.
+
+TOPICS (CORE QUESTIONS MUST USE THESE TOPICS, ONE TOPIC PER CORE QUESTION):
 ${selectedTopics.map((t, i) => `${i + 1}. ${t}`).join("\n")}
 
-CRITICAL RULES:
-- You MUST ask exactly ${parseInt(questionCount, 10)} core technical questions total.
-- Each core question MUST be from the selected topics list above (one topic per core question).
-- You MAY ask extra follow-up questions after a candidate answer, but:
-  - Follow-ups must be related to the candidate's last answer
-  - Follow-ups must feel friendly and conversational (like real interviewer probing)
-  - Follow-ups do NOT count toward the ${parseInt(questionCount, 10)} core question count
-  - You MUST always return back to the next core topic question after follow-up is complete
+CORE QUESTION RULES:
+- Ask ONE core question at a time and wait for a complete answer.
+- After each answer, you may ask 0–2 follow-up questions (optional).
+- Then move to the next core topic question.
+- Stop asking core questions once you have reached your chosen number (within ${minCore}-${maxCore}).
+- After stopping core questions, immediately go to evaluation and end the interview.
 - No question numbering out loud, no "Question 1/10" style talk.
-- Adjust depth based on ${difficultyInfo.level} difficulty rule.
 
 SILENCE HANDLING (Only when NO speech detected):
 - If genuine silence for several seconds: "Take your time, I'm listening."
 - If continued silence, repeat the question briefly.
 - If still no response: acknowledge and move on to the next core topic question.
 
-END PROCEDURE (MANDATORY after ${parseInt(questionCount, 10)} core technical questions):
+END PROCEDURE (MANDATORY AFTER YOU FINISH CORE QUESTIONS):
 ${
   language === "Bengali"
     ? `
@@ -201,7 +211,9 @@ ${
         role,
         level: difficultyInfo.level,
         years: difficultyInfo.years,
-        questionCount: parseInt(questionCount, 10),
+        baseCount,
+        minCore,
+        maxCore,
         selectedTopics
       }
     });
@@ -399,6 +411,7 @@ const processTranscript = async (req, res) => {
       transcriptText += `[${entry.timestamp}] ${(entry.role || "unknown").toUpperCase()}: ${entry.text || "No text"}\n\n`;
     });
 
+    // Write transcript to file
     fs.writeFileSync(transcriptFile, transcriptText, "utf8");
 
     // Extract score using robust regex patterns (handle empty transcript)
@@ -412,9 +425,11 @@ const processTranscript = async (req, res) => {
     let score = null;
     let feedback = "";
 
+    // Only try to extract score if there's actual transcript content
     if (fullTranscript.trim().length > 0) {
       console.log("🔍 ATTEMPTING SCORE EXTRACTION FROM:", fullTranscript);
 
+      // Robust score patterns (English + Bengali)
       const scorePatterns = [
         // English patterns
         /(?:your\s+)?score\s*(?:is|:)?\s*(\d+)\s*(?:\/|out\s+of|over)\s*10/i,
@@ -482,13 +497,7 @@ ${fullTranscript}
         );
 
         const aiResult = JSON.parse(aiScoreResponse.data.choices[0].message.content);
-        if (
-          aiResult.score !== undefined &&
-          aiResult.score !== null &&
-          !isNaN(aiResult.score) &&
-          aiResult.score >= 0 &&
-          aiResult.score <= 10
-        ) {
+        if (aiResult.score !== undefined && aiResult.score !== null && !isNaN(aiResult.score) && aiResult.score >= 0 && aiResult.score <= 10) {
           score = parseInt(aiResult.score);
         }
       } catch (aiError) {
@@ -545,6 +554,7 @@ ${fullTranscript}
       score_extracted: score !== null
     };
 
+    // Get existing interview results or initialize empty array
     let existingResults = [];
     try {
       existingResults = student.ai_voice_interviews
@@ -557,8 +567,10 @@ ${fullTranscript}
       existingResults = [];
     }
 
+    // Add new result to the array
     existingResults.push(newInterviewResult);
 
+    // Aggressive fix for Sequelize JSON array detection
     student.ai_voice_interviews = [...existingResults];
     student.changed("ai_voice_interviews", true);
     await student.save();

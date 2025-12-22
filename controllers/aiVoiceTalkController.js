@@ -197,9 +197,6 @@ ${
         voice: "alloy",
         instructions: systemPrompt,
         temperature: 0.65,
-        top_p: 0.9,
-        frequency_penalty: 0.3,
-        presence_penalty: 0.2,
         input_audio_transcription: { model: "whisper-1" },
         turn_detection: {
           type: "server_vad",

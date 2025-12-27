@@ -515,26 +515,72 @@ ${fullTranscript}
     }
 
     // Enhanced feedback extraction (English + Bengali)
+    // Look for feedback between score/evaluation and interview completed
     const feedbackPatterns = [
-      // English patterns
-      /(?:score\s*(?:is|:)?\s*\d+\s*(?:\/|out of|over)\s*10)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
-      /(?:\d+\s*(?:\/|out of|over)\s*10)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
-      /(?:score)\s*[.!]?\s*(.*?)(?:interview completed|thank you for your time|please click)/i,
-
+      // English patterns - more flexible
+      /your score is \d+\/10[.!]?\s+(.*?)(?:interview completed|thank you for your time|please click)/is,
+      /(\d+\/10)[.!]?\s+(.*?)(?:interview completed|thank you for your time|please click)/is,
+      /score[.!:]\s+(.*?)(?:interview completed|thank you for your time|please click)/is,
+      // Catch feedback after score anywhere before interview completed
+      /(?:score|strengths|areas?|feedback)[.!:=\s]+(.*?)(?:interview completed|thank you for your time|please click)/is,
       // Bengali patterns
-      /(?:স্কোর\s*(?:হলো|হল|:)?\s*\d+\s*(?:\/|এর\s+মধ্যে)\s*10)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i,
-      /(?:\d+\s*(?:\/|এর\s+মধ্যে)\s*10)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i,
-      /(?:উত্তরের\s+ভিত্তিতে)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i,
-      /(?:স্কোর)\s*[.!।]?\s*(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে.*?ক্লিক)/i
+      /আপনার স্কোর\s+\d+\/10[.।]?\s+(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে)/is,
+      /স্কোর[.।:]\s+(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে)/is
     ];
 
     for (const pattern of feedbackPatterns) {
       const match = fullTranscript.match(pattern);
-      if (match && match[1] && match[1].trim().length > 10) {
-        feedback = match[1].trim();
-        feedback = feedback.replace(/please click the stop interview button/i, "").trim();
-        feedback = feedback.replace(/\s+/g, " ");
-        break;
+      if (match) {
+        const extractedFeedback = match[match.length - 1] || match[1]; // Get last capturing group
+        if (extractedFeedback && extractedFeedback.trim().length > 5) {
+          feedback = extractedFeedback.trim();
+          // Clean up unwanted text
+          feedback = feedback.replace(/please click.*/i, "").trim();
+          feedback = feedback.replace(/দয়া করে.*/i, "").trim();
+          feedback = feedback.replace(/\s+/g, " ");
+          if (feedback.length > 5) {
+            console.log("✅ FEEDBACK EXTRACTED (Regex):", feedback);
+            break; // Only accept if substantial feedback remains
+          }
+        }
+      }
+    }
+
+    console.log("📊 After regex extraction - Feedback:", feedback ? `"${feedback}"` : "(empty)");
+
+    // AI fallback for feedback extraction if regex fails
+    if (!feedback || feedback.length < 5) {
+      try {
+        const feedbackPrompt = `
+Extract ONLY the constructive feedback from the interview conclusion (not the score, not the stop button instruction).
+Return JSON: { "feedback": "string" }
+
+Text:
+${fullTranscript}
+`;
+
+        const aiFeedbackResponse = await axios.post(
+          "https://api.openai.com/v1/chat/completions",
+          {
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: feedbackPrompt }],
+            response_format: { type: "json_object" }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+
+        const aiFeedback = JSON.parse(aiFeedbackResponse.data.choices[0].message.content);
+        if (aiFeedback.feedback && aiFeedback.feedback.trim().length > 5) {
+          feedback = aiFeedback.feedback.trim();
+          console.log("✅ FEEDBACK EXTRACTED (AI fallback):", feedback);
+        }
+      } catch (aiError) {
+        console.error("AI feedback extraction failed:", aiError);
       }
     }
 
@@ -562,6 +608,12 @@ ${fullTranscript}
       status: score !== null ? "completed" : "incomplete",
       score_extracted: score !== null
     };
+
+    console.log("📝 INTERVIEW RESULT OBJECT:", {
+      score: newInterviewResult.score,
+      feedback: newInterviewResult.feedback,
+      feedbackLength: (newInterviewResult.feedback || "").length
+    });
 
     // Get existing interview results or initialize empty array
     let existingResults = [];

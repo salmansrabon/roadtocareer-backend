@@ -89,7 +89,7 @@ const createRealtimeSession = async (req, res) => {
       role = "SDET",
       level = "Mid",
       language = "English",
-      questionCount = 2
+      questionCount = 15
     } = req.body;
 
     const normalizedLevel = normalizeLevel(level);
@@ -97,8 +97,14 @@ const createRealtimeSession = async (req, res) => {
 
     // Dynamic range (AI independence)
     const baseCount = Math.max(1, parseInt(questionCount || 10, 10));
-    const minCore = Math.max(1, baseCount - 3);
-    const maxCore = baseCount + 3;
+    let minCore = Math.max(1, baseCount - 3);
+    let maxCore = baseCount + 3;
+    
+    // For Junior level, ensure minimum 5 core questions (for mandatory question types)
+    if (difficultyInfo.level === "Junior") {
+      minCore = Math.max(5, minCore);
+      maxCore = Math.max(5, maxCore);
+    }
 
     // Prepare enough topics for maximum possible core questions
     const selectedTopics = pickTopics(maxCore);
@@ -164,6 +170,44 @@ CORE QUESTION RULES:
 - Stop asking core questions once you have reached your chosen number (within ${minCore}-${maxCore}).
 - After stopping core questions, immediately go to evaluation and end the interview.
 - No question numbering out loud, no "Question 1/10" style talk.
+
+${
+  difficultyInfo.level === "Junior"
+    ? `
+MANDATORY QUESTIONS FOR JUNIOR LEVEL (MUST BE INCLUDED):
+These 5 mandatory question types MUST be asked during the interview:
+
+1) TEST CASE SCENARIO QUESTION (MANDATORY):
+   - Ask the candidate: "Given a scenario [describe a simple feature/function], write test cases for it. What approach would you use?"
+   - Example: "Suppose you are testing a login feature. How would you write test cases for it? What edge cases would you consider?"
+   - This tests understanding of test case design and boundary conditions.
+
+2) PROGRAMMING PROBLEM 1 - ARRAY (MANDATORY):
+   - Ask: "Write a simple solution to [array problem]. For example: 'Find the second largest number in an array' or 'Remove duplicates from an array'"
+   - Assess: Logic, understanding of array operations, basic coding ability.
+
+3) PROGRAMMING PROBLEM 2 - STRING (MANDATORY):
+   - Ask: "Write a simple solution to [string problem]. For example: 'Check if a string is a palindrome' or 'Count vowels in a string'"
+   - Assess: String manipulation, loop handling, basic logic.
+
+4) DATABASE QUERY 1 - JOINING (MANDATORY):
+   - Ask: "Write a SQL query to [joining problem]. Example: 'Get all students and their course names using a JOIN'"
+   - Assess: Understanding of SQL JOINs, table relationships.
+
+5) DATABASE QUERY 1 - SUBQUERY (MANDATORY):
+   - Ask: "Write a SQL query to [subquery problem]. Example: 'Find all employees whose salary is higher than the average salary using a subquery'"
+   - Assess: Understanding of subqueries, nested queries, aggregation.
+
+INTEGRATION STRATEGY:
+- You MUST ask these 5 mandatory questions (Test Case, Array, String, JOIN, Subquery).
+- These 5 questions count toward your core question total.
+- Fill remaining core questions (if any) with COMMON_TOPICS questions.
+- If minCore/maxCore is less than 5, adjust minCore to at least 5 for Junior level.
+- Order: Mix technical topics with mandatory questions naturally throughout the interview.
+`
+    : ""
+}
+
 
 SILENCE HANDLING (Only when NO speech detected):
 - If genuine silence for several seconds: "Take your time, I'm listening."

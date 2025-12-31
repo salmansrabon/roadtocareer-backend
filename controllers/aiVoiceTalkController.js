@@ -89,7 +89,7 @@ const createRealtimeSession = async (req, res) => {
       role = "SDET",
       level = "Mid",
       language = "English",
-      questionCount = 10
+      questionCount = 2
     } = req.body;
 
     const normalizedLevel = normalizeLevel(level);
@@ -515,21 +515,30 @@ ${fullTranscript}
     }
 
     // Enhanced feedback extraction (English + Bengali)
-    // Look for feedback between score/evaluation and interview completed
+    // Extract feedback ONLY BEFORE "Interview Completed" is mentioned
+    let transcriptBeforeCompletion = fullTranscript;
+    
+    // Find and truncate transcript before "Interview Completed"
+    const interviewCompletedIndex = fullTranscript.search(/interview completed|ইন্টারভিউ সম্পন্ন/i);
+    if (interviewCompletedIndex !== -1) {
+      transcriptBeforeCompletion = fullTranscript.substring(0, interviewCompletedIndex);
+      console.log("📌 TRUNCATED TRANSCRIPT AT 'Interview Completed'");
+    }
+    
     const feedbackPatterns = [
-      // English patterns - more flexible
-      /your score is \d+\/10[.!]?\s+(.*?)(?:interview completed|thank you for your time|please click)/is,
-      /(\d+\/10)[.!]?\s+(.*?)(?:interview completed|thank you for your time|please click)/is,
-      /score[.!:]\s+(.*?)(?:interview completed|thank you for your time|please click)/is,
-      // Catch feedback after score anywhere before interview completed
-      /(?:score|strengths|areas?|feedback)[.!:=\s]+(.*?)(?:interview completed|thank you for your time|please click)/is,
+      // English patterns - extract from truncated transcript
+      /your score is \d+\/10[.!]?\s+(.*?)$/is,
+      /(\d+\/10)[.!]?\s+(.*?)$/is,
+      /score[.!:]\s+(.*?)$/is,
+      // Catch feedback after score/strengths/areas anywhere
+      /(?:score|strengths?|areas?|feedback)[.!:=\s]+(.*?)$/is,
       // Bengali patterns
-      /আপনার স্কোর\s+\d+\/10[.।]?\s+(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে)/is,
-      /স্কোর[.।:]\s+(.*?)(?:ইন্টারভিউ সম্পন্ন|ধন্যবাদ|দয়া করে)/is
+      /আপনার স্কোর\s+\d+\/10[.।]?\s+(.*?)$/is,
+      /স্কোর[.।:]\s+(.*?)$/is
     ];
 
     for (const pattern of feedbackPatterns) {
-      const match = fullTranscript.match(pattern);
+      const match = transcriptBeforeCompletion.match(pattern);
       if (match) {
         const extractedFeedback = match[match.length - 1] || match[1]; // Get last capturing group
         if (extractedFeedback && extractedFeedback.trim().length > 5) {
@@ -553,10 +562,11 @@ ${fullTranscript}
       try {
         const feedbackPrompt = `
 Extract ONLY the constructive feedback from the interview conclusion (not the score, not the stop button instruction).
+The interview should end BEFORE "Interview Completed" is mentioned - only extract feedback given during the actual interview, not after completion.
 Return JSON: { "feedback": "string" }
 
 Text:
-${fullTranscript}
+${transcriptBeforeCompletion}
 `;
 
         const aiFeedbackResponse = await axios.post(

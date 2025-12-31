@@ -1582,6 +1582,8 @@ exports.getStudentsWithAIInterviews = async (req, res) => {
       student_name,
       page = 1,
       limit = 10,
+      sortBy = "lastInterviewDate",
+      sortOrder = "desc",
     } = req.query;
 
     const pageNumber = parseInt(page) || 1;
@@ -1623,7 +1625,7 @@ exports.getStudentsWithAIInterviews = async (req, res) => {
       include: includeClause,
     });
 
-    // ✅ Now fetch paginated data
+    // ✅ Now fetch ALL data (no limit since we're sorting by JSON field)
     const students = await Student.findAll({
       where: whereClause,
       attributes: [
@@ -1637,12 +1639,11 @@ exports.getStudentsWithAIInterviews = async (req, res) => {
       ],
       include: includeClause,
       order: [["createdAt", "DESC"]],
-      offset,
-      limit: limitNumber,
+      // NO LIMIT - fetch all matching records for proper sorting
     });
 
     // ✅ Process students to add mock interview summary
-    const processedStudents = students.map((student) => {
+    let processedStudents = students.map((student) => {
       const studentData = student.toJSON();
       const aiInterviews = studentData.ai_voice_interviews || [];
       
@@ -1655,23 +1656,41 @@ exports.getStudentsWithAIInterviews = async (req, res) => {
         ? (completedAttempts.reduce((sum, interview) => sum + interview.score, 0) / completedAttempts.length).toFixed(1)
         : "N/A";
 
+      const lastInterviewDate = aiInterviews.length > 0 ? aiInterviews[aiInterviews.length - 1].interview_date : null;
+
       return {
         ...studentData,
         mockHistorySummary: {
           totalAttempts,
           completedAttempts: completedAttempts.length,
           averageScore,
-          lastInterviewDate: aiInterviews.length > 0 ? aiInterviews[aiInterviews.length - 1].interview_date : null,
+          lastInterviewDate,
         },
       };
     });
+
+    // ✅ Sort by requested field
+    if (sortBy === "lastInterviewDate") {
+      processedStudents.sort((a, b) => {
+        const dateA = a.mockHistorySummary?.lastInterviewDate 
+          ? new Date(a.mockHistorySummary.lastInterviewDate) 
+          : new Date(0);
+        const dateB = b.mockHistorySummary?.lastInterviewDate 
+          ? new Date(b.mockHistorySummary.lastInterviewDate) 
+          : new Date(0);
+        return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
+      });
+    }
+
+    // ✅ Apply pagination after sorting
+    const paginatedStudents = processedStudents.slice(offset, offset + limitNumber);
 
     return res.status(200).json({
       success: true,
       totalStudents,
       totalPages: Math.ceil(totalStudents / limitNumber),
       currentPage: pageNumber,
-      students: processedStudents,
+      students: paginatedStudents,
     });
   } catch (error) {
     console.error("Error fetching students with AI interviews:", error);

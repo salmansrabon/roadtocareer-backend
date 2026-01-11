@@ -95,7 +95,7 @@ exports.getAllExamQuestions = async (req, res) => {
             }],
             limit: parseInt(limit),
             offset: parseInt(offset),
-            order: [['createdAt', 'DESC']]
+            order: [['createdAt', 'ASC']]
         });
 
         res.status(200).json({

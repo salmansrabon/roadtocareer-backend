@@ -72,8 +72,8 @@ exports.getExamForStudent = async (req, res) => {
             return res.status(404).json({ message: "No questions found for this exam" });
         }
 
-        // Remove hints from questions for student view and reverse to show in creation order (ascending)
-        const questionsForStudent = examQuestions.questions.reverse().map((q, index) => ({
+        // Remove hints from questions for student view (keep original order)
+        const questionsForStudent = examQuestions.questions.map((q, index) => ({
             questionNumber: index + 1,
             question: q.question,
             score: q.score

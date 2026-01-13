@@ -164,11 +164,14 @@ exports.submitExamAnswers = async (req, res) => {
             batch_no: student.batch_no,
             submission_time: now.toISOString(),
             answers: answers.map((studentAnswer, index) => {
-                // Answers are already in reversed display order, map them directly
-                const originalIndex = studentAnswer.questionNumber - 1;
+                // Map display position back to original question index
+                // Display position 1 = original index (totalQuestions - 1)
+                // Display position 2 = original index (totalQuestions - 2), etc.
+                const originalIndex = totalQuestionsSubmit - studentAnswer.questionNumber;
                 const questionData = examQuestions.questions[originalIndex];
+                const displayQuestionNumber = totalQuestionsSubmit - originalIndex;
                 return {
-                    questionNumber: studentAnswer.questionNumber,
+                    questionNumber: displayQuestionNumber,
                     question: questionData?.question || '',
                     student_answer: studentAnswer.answer,
                     hint: questionData?.hint || '',
@@ -176,7 +179,7 @@ exports.submitExamAnswers = async (req, res) => {
                     score: null, // To be filled by admin during evaluation
                     feedback: null // To be filled by admin during evaluation
                 };
-            }).reverse(),
+            }),
             total_score: null, // To be calculated during evaluation
             is_evaluated: false
         };

@@ -72,8 +72,9 @@ exports.getExamForStudent = async (req, res) => {
             return res.status(404).json({ message: "No questions found for this exam" });
         }
 
-        // Remove hints from questions for student view (keep original order)
-        const questionsForStudent = examQuestions.questions.map((q, index) => ({
+        // Remove hints from questions for student view and reverse for display
+        const totalQuestions = examQuestions.questions.length;
+        const questionsForStudent = examQuestions.questions.reverse().map((q, index) => ({
             questionNumber: index + 1,
             question: q.question,
             score: q.score
@@ -150,6 +151,9 @@ exports.submitExamAnswers = async (req, res) => {
             return res.status(404).json({ message: "Exam questions not found" });
         }
 
+        // Get total questions count for reverse mapping
+        const totalQuestionsSubmit = examQuestions.questions.length;
+        
         // Create submission data
         const submissionData = {
             exam_id: parseInt(examId),
@@ -160,7 +164,9 @@ exports.submitExamAnswers = async (req, res) => {
             batch_no: student.batch_no,
             submission_time: now.toISOString(),
             answers: answers.map((studentAnswer, index) => {
-                const questionData = examQuestions.questions[studentAnswer.questionNumber - 1];
+                // Answers are already in reversed display order, map them directly
+                const originalIndex = studentAnswer.questionNumber - 1;
+                const questionData = examQuestions.questions[originalIndex];
                 return {
                     questionNumber: studentAnswer.questionNumber,
                     question: questionData?.question || '',
@@ -170,7 +176,7 @@ exports.submitExamAnswers = async (req, res) => {
                     score: null, // To be filled by admin during evaluation
                     feedback: null // To be filled by admin during evaluation
                 };
-            }),
+            }).reverse(),
             total_score: null, // To be calculated during evaluation
             is_evaluated: false
         };

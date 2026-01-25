@@ -722,6 +722,7 @@ exports.getStudentById = async (req, res) => {
         "aboutMe",
         "createdAt",
         "get_certificate",
+        "exam_answer",
       ],
       include: [
         {

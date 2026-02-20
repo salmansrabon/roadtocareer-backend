@@ -5,5 +5,9 @@ const { authenticateUser, requireAdmin } = require("../middlewares/authMiddlewar
 const router = express.Router();
 
 router.get("/list-folder", authenticateUser, GoogleDriveController.listFolderContents); // ✅ FIXED USAGE
+router.get("/list", GoogleDriveController.getAllGoogleDriveLinks); // Public route for gallery
+router.post("/create", authenticateUser, GoogleDriveController.createGoogleDriveLink);
+router.put("/update/:id", authenticateUser, GoogleDriveController.updateGoogleDriveLink);
+router.delete("/delete/:id", authenticateUser, GoogleDriveController.deleteGoogleDriveLink);
 
 module.exports = router;

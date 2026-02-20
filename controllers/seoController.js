@@ -20,9 +20,11 @@ class SeoController {
             });
             
             if (!seoData) {
-                return res.status(404).json({
+                // Return 200 with success:false so frontend can use fallback gracefully
+                return res.status(200).json({
                     success: false,
-                    message: 'SEO data not found for this route'
+                    message: 'SEO data not found for this route',
+                    data: null
                 });
             }
 

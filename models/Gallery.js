@@ -9,6 +9,11 @@ const Gallery = sequelize.define(
       autoIncrement: true,
       primaryKey: true,
     },
+    position: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
     title: {
       type: DataTypes.STRING(255),
       allowNull: false,

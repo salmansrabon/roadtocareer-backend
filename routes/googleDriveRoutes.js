@@ -8,6 +8,7 @@ router.get("/list-folder", authenticateUser, GoogleDriveController.listFolderCon
 router.get("/list", GoogleDriveController.getAllGoogleDriveLinks); // Public route for gallery
 router.post("/create", authenticateUser, GoogleDriveController.createGoogleDriveLink);
 router.put("/update/:id", authenticateUser, GoogleDriveController.updateGoogleDriveLink);
+router.put("/reorder", authenticateUser, GoogleDriveController.reorderGalleryItems);
 router.delete("/delete/:id", authenticateUser, GoogleDriveController.deleteGoogleDriveLink);
 
 module.exports = router;

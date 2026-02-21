@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS gallery;
 
 CREATE TABLE gallery (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    position INT NOT NULL DEFAULT 0,
     title VARCHAR(255) NOT NULL,
     description VARCHAR(255) NULL,
     gdrive_link VARCHAR(1000) NOT NULL,

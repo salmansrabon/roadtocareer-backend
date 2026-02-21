@@ -25,7 +25,7 @@ exports.listFolderContents = async (req, res) => {
 exports.getAllGoogleDriveLinks = async (req, res) => {
     try {
         const galleryItems = await Gallery.findAll({
-            order: [["createdAt", "DESC"]],
+            order: [["position", "ASC"], ["createdAt", "DESC"]],
         });
 
         return res.status(200).json({
@@ -53,7 +53,14 @@ exports.createGoogleDriveLink = async (req, res) => {
             });
         }
 
+        // Get the highest position and add 1 for new item
+        const maxPositionItem = await Gallery.findOne({
+            order: [["position", "DESC"]],
+        });
+        const newPosition = maxPositionItem ? maxPositionItem.position + 1 : 1;
+
         const createdLink = await Gallery.create({
+            position: newPosition,
             title,
             description: description || null,
             gdrive_link,
@@ -131,6 +138,40 @@ exports.deleteGoogleDriveLink = async (req, res) => {
         });
     } catch (error) {
         console.error("Error deleting gallery item:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+};
+
+exports.reorderGalleryItems = async (req, res) => {
+    try {
+        const { items } = req.body; // Expected format: [{ id: 1, position: 0 }, { id: 2, position: 1 }, ...]
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "items array is required",
+            });
+        }
+
+        // Update positions for all items
+        const updatePromises = items.map((item) =>
+            Gallery.update(
+                { position: item.position },
+                { where: { id: item.id } }
+            )
+        );
+
+        await Promise.all(updatePromises);
+
+        return res.status(200).json({
+            success: true,
+            message: "Gallery items reordered successfully",
+        });
+    } catch (error) {
+        console.error("Error reordering gallery items:", error);
         return res.status(500).json({
             success: false,
             message: "Internal server error",

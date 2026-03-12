@@ -50,6 +50,7 @@ const corsOptions = {
         'http://127.0.0.1:3002',
         'https://www.roadtocareer.net',
         'https://roadtocareer.net',
+        'https://courses.roadtocareer.net',
         process.env.FRONTEND_URL
     ].filter(Boolean),
     credentials: true,

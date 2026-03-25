@@ -6,7 +6,7 @@ const { sendEmail } = require("../utils/emailHelper");
 
 const updateAssignmentScore = async (req, res) => {
   const { assignmentId } = req.params;
-  const { StudentId, Score, Comments } = req.body;
+  const { StudentId, Score, Comments, NewComments } = req.body;
 
   if (!assignmentId || !StudentId) {
     return res.status(400).json({ message: "AssignmentId (path) and StudentId (body) are required." });
@@ -49,7 +49,8 @@ const updateAssignmentScore = async (req, res) => {
     if (student?.User?.email && student.User.isValid === 1) {
       const assignmentTitle = answer.Assignment?.Assignment_Title || "Your Assignment";
       const subject = `Assignment Reviewed - ${assignmentTitle}`;
-      const commentText = Array.isArray(Comments) ? Comments.join("\n") : Comments;
+      const emailComments = Array.isArray(NewComments) && NewComments.length > 0 ? NewComments : Comments;
+      const commentText = Array.isArray(emailComments) ? emailComments.join("\n") : emailComments;
 
       const text = `Hello ${student.student_name},
 

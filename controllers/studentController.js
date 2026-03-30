@@ -479,10 +479,7 @@ exports.getAllStudents = async (req, res) => {
         "createdAt",
       ],
       include: includeClause,
-      order: [
-        ["get_certificate", "DESC"],
-        ["createdAt", "DESC"],
-      ],
+      order: [[Sequelize.literal("`Student`.`createdAt`"), "DESC"]],
       offset,
       limit: limitNumber,
     });
@@ -618,10 +615,7 @@ exports.getQaTalent = async (req, res) => {
         "createdAt",
       ],
       include: includeClause,
-      order: [
-        ["get_certificate", "DESC"],
-        ["createdAt", "DESC"],
-      ],
+      order: [[Sequelize.literal("`Student`.`createdAt`"), "DESC"]],
       offset,
       limit: limitNumber,
     });

@@ -1285,9 +1285,6 @@ exports.migrateStudent = async (req, res) => {
       { where: { studentId } }
     );
 
-    //Reset attendance
-    await Attendance.update({ attendanceList: null }, { where: { studentId } });
-
     // Lookup the course's drive folder ID
     const course = await Course.findOne({ where: { courseId: CourseId } });
     if (!course || !course.drive_folder_id) {
@@ -1298,6 +1295,17 @@ exports.migrateStudent = async (req, res) => {
         updatedBatch: batch_no,
       });
     }
+
+    //Reset attendance and sync new batch/course metadata
+    await Attendance.update(
+      {
+        attendanceList: null,
+        batch_no,
+        courseId: CourseId,
+        courseTitle: course.course_title,
+      },
+      { where: { StudentId: studentId } }
+    );
 
     // Grant drive access to student
     const driveResult = await grantDriveAccess(

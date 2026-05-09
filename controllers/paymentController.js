@@ -250,7 +250,7 @@ exports.getPaymentHistory = async (req, res) => {
  */
 exports.getPaymentsList = async (req, res) => {
     try {
-        const { studentId, name, courseId, month, dueAdjustmentType, page = 1, limit = 10 } = req.query;
+        const { studentId, name, courseId, month, year, dueAdjustmentType, page = 1, limit = 10 } = req.query;
 
         const pageNumber = parseInt(page) || 1;
         const limitNumber = parseInt(limit) || 10;
@@ -260,7 +260,8 @@ exports.getPaymentsList = async (req, res) => {
         if (studentId) whereClause.studentId = studentId;
         if (name) whereClause.studentName = { [Op.like]: `%${name}%` };
         if (courseId) whereClause.courseId = courseId;
-        if (month) whereClause.month = { [Op.like]: `%${month}%` };
+        if (month) whereClause.month = month;
+        if (year) whereClause[Op.and] = Sequelize.where(Sequelize.fn('YEAR', Sequelize.col('paymentDateTime')), parseInt(year));
         if (dueAdjustmentType) whereClause.dueAdjustmentType = dueAdjustmentType;
 
         const totalPayments = await Payment.count({ where: whereClause });
@@ -367,7 +368,7 @@ exports.getStudentPayments = async (req, res) => {
 //
 exports.getUnpaidStudents = async (req, res) => {
     try {
-        const { courseId, month, batch_no, limit = 10, offset = 0 } = req.query;
+        const { courseId, month, year, batch_no, limit = 10, offset = 0 } = req.query;
 
         // 🔍 Base filter for enrolled students
         let studentFilter = {
@@ -380,6 +381,7 @@ exports.getUnpaidStudents = async (req, res) => {
         let paymentWhere = {};
         if (courseId) paymentWhere.courseId = courseId;
         if (month) paymentWhere.month = month;
+        if (year) paymentWhere[Op.and] = Sequelize.where(Sequelize.fn('YEAR', Sequelize.col('paymentDateTime')), parseInt(year));
 
         // 🔍 Find all studentIds who HAVE paid (to exclude them)
         const paidStudentRows = await Payment.findAll({

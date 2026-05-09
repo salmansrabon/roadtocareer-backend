@@ -399,7 +399,7 @@ exports.getUnpaidStudents = async (req, res) => {
                     [Op.notIn]: paidStudentIds
                 }
             },
-            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email", "remark"],
+            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email", "remark", "due"],
             include: [
                 {
                     model: Course,
@@ -426,9 +426,17 @@ exports.getUnpaidStudents = async (req, res) => {
 
         const totalPages = Math.ceil(totalUnpaid / limit);
 
+        const totalDueAmount = await Student.sum('due', {
+            where: {
+                ...studentFilter,
+                StudentId: { [Op.notIn]: paidStudentIds }
+            }
+        }) || 0;
+
         return res.status(200).json({
             success: true,
             totalUnpaid,
+            totalDueAmount,
             totalPages,
             limit: parseInt(limit),
             offset: parseInt(offset),

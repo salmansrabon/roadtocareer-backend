@@ -7,6 +7,7 @@ const {
     getAllBlogsAdmin,
     updateBlog,
     deleteBlog,
+    reorderBlogs,
 } = require("../controllers/blogController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
@@ -21,6 +22,7 @@ router.get("/:slug", getBlogBySlug);
 
 // Admin-only write routes
 router.post("/", authenticateUser, requireAdmin, createBlog);
+router.put("/reorder", authenticateUser, requireAdmin, reorderBlogs); // must be before /:id
 router.put("/:id", authenticateUser, requireAdmin, updateBlog);
 router.delete("/:id", authenticateUser, requireAdmin, deleteBlog);
 

@@ -44,6 +44,11 @@ const Blog = sequelize.define("Blog", {
         allowNull: true,
         defaultValue: null,
     },
+    sortOrder: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+    },
 }, {
     tableName: "blogs",
     timestamps: true,

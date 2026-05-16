@@ -52,7 +52,7 @@ exports.getAllPublishedBlogs = async (req, res) => {
         const { count, rows: blogs } = await Blog.findAndCountAll({
             where: { status: "published" },
             attributes: ["id", "title", "slug", "excerpt", "coverImage", "author", "publishedAt"],
-            order: [["publishedAt", "DESC"]],
+            order: [["sortOrder", "ASC"], ["publishedAt", "DESC"]],
             limit,
             offset,
         });
@@ -94,8 +94,8 @@ exports.getBlogBySlug = async (req, res) => {
 exports.getAllBlogsAdmin = async (req, res) => {
     try {
         const blogs = await Blog.findAll({
-            attributes: ["id", "title", "slug", "excerpt", "content", "coverImage", "author", "status", "publishedAt", "createdAt"],
-            order: [["createdAt", "DESC"]],
+            attributes: ["id", "title", "slug", "excerpt", "content", "coverImage", "author", "status", "publishedAt", "createdAt", "sortOrder"],
+            order: [["sortOrder", "ASC"], ["createdAt", "DESC"]],
         });
 
         res.status(200).json({ message: "All blogs fetched successfully", data: blogs });
@@ -137,6 +137,28 @@ exports.updateBlog = async (req, res) => {
         res.status(200).json({ message: "Blog updated successfully", data: blog });
     } catch (error) {
         console.error("Error updating blog:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// PUT /api/blogs/reorder — admin only
+// Body: { orders: [{ id, sortOrder }, ...] }
+exports.reorderBlogs = async (req, res) => {
+    try {
+        const { orders } = req.body;
+        if (!Array.isArray(orders) || orders.length === 0) {
+            return res.status(400).json({ message: "orders array is required" });
+        }
+
+        await Promise.all(
+            orders.map(({ id, sortOrder }) =>
+                Blog.update({ sortOrder }, { where: { id } })
+            )
+        );
+
+        res.status(200).json({ message: "Blog order updated successfully" });
+    } catch (error) {
+        console.error("Error reordering blogs:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };

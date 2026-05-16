@@ -25,6 +25,7 @@ const chatbotRoutes = require("./routes/chatbotRoutes");
 const examRoutes = require("./routes/examRoutes");
 const seoRoutes = require("./routes/seoRoutes");
 const aiVoiceRoutes = require("./routes/aiVoiceRoutes");
+const blogRoutes = require("./routes/blogRoutes");
 
 // remove this block after upgrading to node 18 into cpanel
 // const fetch = require('node-fetch');
@@ -84,6 +85,7 @@ app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/exam", examRoutes);
 app.use("/api/seo", seoRoutes);
 app.use("/api/ai-voice", aiVoiceRoutes);
+app.use("/api/blogs", blogRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', async () => {

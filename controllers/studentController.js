@@ -1132,7 +1132,7 @@ exports.markAttendance = async (req, res) => {
 
     // ✅ Calculate Attendance Percentage
     const totalClicks = updatedAttendanceList.length;
-    const attendancePercentage = ((totalClicks / 30) * 100).toFixed(2);
+    const attendancePercentage = ((totalClicks / (course.total_class || 30)) * 100).toFixed(2);
 
     return res.status(200).json({
       message: "Attendance marked successfully!",
@@ -1160,12 +1160,17 @@ exports.getAttendance = async (req, res) => {
         .json({ message: "No attendance record found for this student." });
     }
 
+    // ✅ Fetch course to get total_class
+    const course = await Course.findOne({ where: { courseId: attendance.courseId } });
+    const totalClass = course ? (course.total_class || 30) : 30;
+
     // ✅ Parse attendance list using helper function
     const parsedAttendanceList = parseAttendanceList(attendance.attendanceList);
 
     // ✅ Calculate attendance stats using helper function
     const { totalClicks, attendancePercentage } = calculateAttendancePercentage(
-      parsedAttendanceList.length
+      parsedAttendanceList.length,
+      totalClass
     );
 
     return res.status(200).json({
@@ -1176,6 +1181,7 @@ exports.getAttendance = async (req, res) => {
       batch_no: attendance.batch_no,
       attendanceList: attendance.attendanceList, // ✅ Keep raw string format in response
       totalClicks,
+      totalClass,
       attendancePercentage,
     });
   } catch (error) {
@@ -1439,8 +1445,16 @@ exports.getCourseProgress = async (req, res) => {
       where: { StudentId: studentId, Score: { [Op.ne]: null } },
     });
 
-    // 4. Calculate percentages
-    const attendancePercentage = Math.min((attendanceCount / 30) * 100, 100);
+    // 4. Fetch total_class from the student's course
+    const student = await Student.findOne({ where: { StudentId: studentId } });
+    let totalClass = 30;
+    if (student) {
+      const course = await Course.findOne({ where: { courseId: student.CourseId } });
+      if (course) totalClass = course.total_class || 30;
+    }
+
+    // 5. Calculate percentages
+    const attendancePercentage = Math.min((attendanceCount / totalClass) * 100, 100);
     const assignmentPercentage = Math.min((assignmentCount / 10) * 100, 100);
 
     // 5. Overall completion is the average of the two

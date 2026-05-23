@@ -1,0 +1,1 @@
+ALTER TABLE courses ADD COLUMN total_class INT NOT NULL DEFAULT 30;

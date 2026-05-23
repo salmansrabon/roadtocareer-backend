@@ -18,7 +18,8 @@ exports.createCourse = async (req, res) => {
             class_start_date,
             class_days, // Array
             class_time,
-            course_image
+            course_image,
+            total_class
         } = req.body;
 
         // Validate required fields
@@ -48,7 +49,8 @@ exports.createCourse = async (req, res) => {
             class_start_date,
             class_days: JSON.stringify(class_days), // Store as JSON array
             class_time,
-            course_image
+            course_image,
+            total_class: total_class || 30
         });
 
         res.status(201).json({ message: "Course created successfully", course: newCourse });
@@ -81,6 +83,7 @@ exports.getCourseDetails = async (req, res) => {
                 "class_days",
                 "class_time",
                 "course_image",
+                "total_class",
                 "createdAt",
                 "updatedAt"
             ],
@@ -120,7 +123,7 @@ exports.getCoursesList = async (req, res) => {
                 "courseId", "batch_no", "course_title", "drive_folder_id",
                 "short_description", "is_enabled", "enrollment", "enrollment_start_date",
                 "enrollment_end_date", "orientation_date", "class_start_date", "class_days",
-                "class_time", "course_image"
+                "class_time", "course_image", "total_class"
             ],
             include: [
                 {
@@ -156,7 +159,8 @@ exports.updateCourse = async (req, res) => {
             class_start_date,
             class_days,
             class_time,
-            course_image
+            course_image,
+            total_class
         } = req.body;
 
         // ✅ Check if Course Exists
@@ -175,9 +179,10 @@ exports.updateCourse = async (req, res) => {
             enrollment_end_date,
             orientation_date,
             class_start_date,
-            class_days, // ✅ Stored as JSON string
+            class_days,
             class_time,
-            course_image
+            course_image,
+            ...(total_class !== undefined && { total_class })
         });
 
         res.status(200).json({ message: "Course updated successfully!", course });

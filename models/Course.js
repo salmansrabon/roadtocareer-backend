@@ -64,6 +64,11 @@ const Course = sequelize.define("Course", {
     course_image: {
         type: DataTypes.STRING,
         allowNull: false
+    },
+    total_class: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 30
     }
 }, {
     tableName: "courses",

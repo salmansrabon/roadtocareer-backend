@@ -47,7 +47,7 @@ exports.createCourse = async (req, res) => {
             enrollment_end_date,
             orientation_date,
             class_start_date,
-            class_days: JSON.stringify(class_days), // Store as JSON array
+            class_days,
             class_time,
             course_image,
             total_class: total_class || 30

@@ -35,7 +35,7 @@ const processInstallmentInput = (installmentInput) => {
 
 exports.createPackage = async (req, res) => {
     try {
-        const { courseId, packageName, studentFee, jobholderFee, installment } = req.body;
+        const { courseId, packageName, discountedFee, regularFee, installment } = req.body;
 
         // ✅ Check if a package already exists for this course
         const existingPackage = await Package.findOne({ where: { courseId } });
@@ -51,8 +51,8 @@ exports.createPackage = async (req, res) => {
         const newPackage = await Package.create({
             courseId,
             packageName,
-            studentFee,
-            jobholderFee,
+            discountedFee,
+            regularFee,
             installment: processedInstallment
         });
 

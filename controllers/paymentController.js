@@ -28,7 +28,7 @@ exports.addPayment = async (req, res) => {
         if (!packageDetails) {
             return res.status(404).json({ success: false, message: "Package not found!" });
         }
-        const courseFee = parseFloat(packageDetails.studentFee);
+        const courseFee = parseFloat(packageDetails.discountedFee);
 
         // 🔹 Get Previous Payments for the Student
         const previousPayments = await Payment.findAll({ where: { studentId, packageId } });
@@ -109,7 +109,7 @@ exports.updatePayment = async (req, res) => {
         if (!packageDetails) {
             return res.status(404).json({ success: false, message: "Package not found!" });
         }
-        const courseFee = parseFloat(packageDetails.studentFee);
+        const courseFee = parseFloat(packageDetails.discountedFee);
 
         // 🔹 Get Student Details
         const student = await Student.findOne({ where: { StudentId: existingPayment.studentId } });
@@ -205,8 +205,8 @@ exports.getPaymentHistory = async (req, res) => {
             return res.status(404).json({ success: false, message: "Package details not found!" });
         }
 
-        const { id: packageId, studentFee } = packageDetails;
-        const courseFee = parseFloat(studentFee); // ✅ Ensures the courseFee is properly formatted
+        const { id: packageId, discountedFee } = packageDetails;
+        const courseFee = parseFloat(discountedFee);
 
         // 🔹 Fetch Payment records for the student
         const payments = await Payment.findAll({

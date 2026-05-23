@@ -21,11 +21,11 @@ const Package = sequelize.define("Package", {
         type: DataTypes.STRING,
         allowNull: false
     },
-    studentFee: {
+    discountedFee: {
         type: DataTypes.DECIMAL(10,2),
         allowNull: false
     },
-    jobholderFee: {
+    regularFee: {
         type: DataTypes.DECIMAL(10,2),
         allowNull: false
     },

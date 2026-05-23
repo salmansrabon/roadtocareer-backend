@@ -63,7 +63,7 @@ const getDatabaseContext = async () => {
       }
       c.Packages?.forEach(
         (p) =>
-          (ctx += `  • ${p.packageName}: ৳${p.studentFee} (Student), ৳${p.jobholderFee} (Job Holder), ${p.installment} installments\n`)
+          (ctx += `  • ${p.packageName}: ৳${p.discountedFee} (Discounted), ৳${p.regularFee} (Regular), ${p.installment} installments\n`)
       );
 
       const modules = await Module.findAll({ where: { courseId: c.courseId } });
@@ -159,7 +159,7 @@ const generateResponse = async (question) => {
         .flatMap((c) =>
           c.Packages.map(
             (p) =>
-              `**${c.course_title} – ${p.packageName}**\nStudent: ৳${p.studentFee}\nJob Holder: ৳${p.jobholderFee}\nInstallments: ${p.installment}`
+              `**${c.course_title} – ${p.packageName}**\nDiscounted: ৳${p.discountedFee}\nRegular: ৳${p.regularFee}\nInstallments: ${p.installment}`
           )
         )
         .join("\n\n")

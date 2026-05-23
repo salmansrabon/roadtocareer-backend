@@ -235,8 +235,8 @@ async function runSeeders() {
         const seedPackageData = {
             courseId: seedCourseData.courseId,
             packageName: "Diamond",
-            studentFee: 3000.00,
-            jobholderFee: 4500.00,
+            discountedFee: 3000.00,
+            regularFee: 4500.00,
             installment: 2,
         };
 

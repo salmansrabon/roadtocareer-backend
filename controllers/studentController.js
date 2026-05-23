@@ -740,8 +740,8 @@ exports.getStudentById = async (req, res) => {
           attributes: [
             "courseId",
             "packageName",
-            "studentFee",
-            "jobholderFee",
+            "discountedFee",
+            "regularFee",
             "installment",
           ],
           required: false, // LEFT JOIN to avoid errors
@@ -787,8 +787,8 @@ exports.getStudentById = async (req, res) => {
     // ✅ Determine correct fee based on profession
     const courseFee =
       studentRaw.profession === "Job Holder"
-        ? studentRaw.Package?.jobholderFee
-        : studentRaw.Package?.studentFee;
+        ? studentRaw.Package?.regularFee
+        : studentRaw.Package?.discountedFee;
 
     // ✅ Send Response with filtered data (or all data if admin)
     res.status(200).json({

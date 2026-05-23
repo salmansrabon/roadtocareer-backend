@@ -90,7 +90,7 @@ exports.getCourseDetails = async (req, res) => {
             include: [
                 {
                     model: Package,
-                    attributes: ["packageName", "studentFee", "jobholderFee", "installment"], // ✅ Fetch related package details
+                    attributes: ["packageName", "discountedFee", "regularFee", "installment"],
                 }
             ]
         });
@@ -128,7 +128,7 @@ exports.getCoursesList = async (req, res) => {
             include: [
                 {
                     model: Package,
-                    attributes: ["id", "packageName", "studentFee", "jobholderFee", "installment"]
+                    attributes: ["id", "packageName", "discountedFee", "regularFee", "installment"]
                 }
             ]
         });

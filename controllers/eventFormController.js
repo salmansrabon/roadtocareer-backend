@@ -240,6 +240,22 @@ const exportAudienceCSV = async (req, res) => {
     }
 };
 
+// DELETE /api/admin/event-forms/:id/audience/:audienceId
+const deleteAudience = async (req, res) => {
+    try {
+        const entry = await Audience.findOne({
+            where: { id: req.params.audienceId, event_form_id: req.params.id },
+        });
+        if (!entry) return res.status(404).json({ message: "Audience entry not found." });
+
+        await entry.destroy();
+        res.status(200).json({ message: "Audience entry deleted successfully." });
+    } catch (error) {
+        console.error("Error deleting audience entry:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
 // --- Helpers ---
 
 function escapeCSV(value) {
@@ -310,4 +326,5 @@ module.exports = {
     submitAudience,
     getAudienceByForm,
     exportAudienceCSV,
+    deleteAudience,
 };

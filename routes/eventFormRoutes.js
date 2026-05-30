@@ -9,6 +9,7 @@ const {
     submitAudience,
     getAudienceByForm,
     exportAudienceCSV,
+    deleteAudience,
 } = require("../controllers/eventFormController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
@@ -22,6 +23,7 @@ router.delete("/admin/event-forms/:id", authenticateUser, requireAdmin, deleteEv
 // Admin-only: audience management
 router.get("/admin/event-forms/:id/audience", authenticateUser, requireAdmin, getAudienceByForm);
 router.get("/admin/event-forms/:id/audience/export-csv", authenticateUser, requireAdmin, exportAudienceCSV);
+router.delete("/admin/event-forms/:id/audience/:audienceId", authenticateUser, requireAdmin, deleteAudience);
 
 // Public: audience submission and form view
 router.post("/event-forms/:id/submit", submitAudience);

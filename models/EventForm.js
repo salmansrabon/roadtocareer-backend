@@ -28,6 +28,11 @@ const EventForm = sequelize.define("EventForm", {
         type: DataTypes.INTEGER,
         allowNull: false,
     },
+    google_calendar_event_link: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        defaultValue: null,
+    },
 }, {
     tableName: "event_forms",
     timestamps: true,

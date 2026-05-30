@@ -1,11 +1,12 @@
 const EventForm = require("../models/EventForm");
 const Audience = require("../models/Audience");
 const { sendEmail } = require("../utils/emailHelper");
+const { addAttendeeToCalendarEvent } = require("../utils/googleCalendarHelper");
 
 // POST /api/admin/event-forms
 const createEventForm = async (req, res) => {
     try {
-        const { title, short_description, event_date, fields } = req.body;
+        const { title, short_description, event_date, fields, google_calendar_event_link } = req.body;
 
         if (!title || !short_description || !event_date) {
             return res.status(400).json({ message: "title, short_description, and event_date are required." });
@@ -23,6 +24,7 @@ const createEventForm = async (req, res) => {
             event_date,
             fields_json: fields,
             created_by: req.user.id,
+            ...(google_calendar_event_link && { google_calendar_event_link }),
         });
 
         res.status(201).json({ message: "Event form created successfully.", form });
@@ -70,7 +72,7 @@ const updateEventForm = async (req, res) => {
         const form = await EventForm.findByPk(req.params.id);
         if (!form) return res.status(404).json({ message: "Event form not found." });
 
-        const { title, short_description, event_date, fields } = req.body;
+        const { title, short_description, event_date, fields, google_calendar_event_link } = req.body;
 
         if (fields !== undefined) {
             if (!Array.isArray(fields) || fields.length === 0) {
@@ -85,6 +87,7 @@ const updateEventForm = async (req, res) => {
             ...(short_description && { short_description }),
             ...(event_date && { event_date }),
             ...(fields && { fields_json: fields }),
+            ...(google_calendar_event_link !== undefined && { google_calendar_event_link: google_calendar_event_link || null }),
         });
 
         res.status(200).json({ message: "Event form updated successfully.", form });
@@ -157,9 +160,16 @@ We look forward to seeing you there.
 Best regards,
 Road to SDET Team`;
 
-                await sendEmail(recipientEmail, subject, text, "text/plain");
+                const emailSent = await sendEmail(recipientEmail, subject, text, "text/plain");
+
+                // Only add to Google Calendar if the greeting email was delivered successfully
+                if (emailSent && form.google_calendar_event_link) {
+                    await addAttendeeToCalendarEvent(form.google_calendar_event_link, recipientEmail);
+                } else if (!emailSent && form.google_calendar_event_link) {
+                    console.warn(`⚠️ Skipping calendar invite for ${recipientEmail} — greeting email failed.`);
+                }
             } catch (err) {
-                console.error("❌ Error sending greeting email:", err);
+                console.error("❌ Error in post-submission tasks:", err);
             }
         });
     } catch (error) {

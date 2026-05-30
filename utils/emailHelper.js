@@ -37,7 +37,7 @@ async function sendEmail(to, subject, text, contentType = "text/plain") {
         console.log(process.env.SEND_MAIL);
         if(process.env.SEND_MAIL === "false") {
             console.log("📧 Email send configuration is set to false", text);
-            return;
+            return true;
         }
         const response = await gmail.users.messages.send({
             userId: "me",
@@ -47,8 +47,10 @@ async function sendEmail(to, subject, text, contentType = "text/plain") {
         });
 
         console.log("✅ Email sent successfully:", response.data);
+        return true;
     } catch (error) {
         console.error("❌ Error sending email:", error);
+        return false;
     }
 }
 

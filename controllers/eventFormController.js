@@ -145,6 +145,7 @@ const submitAudience = async (req, res) => {
                 const eventDate = new Date(form.event_date).toLocaleDateString("en-US", {
                     weekday: "long", year: "numeric", month: "long", day: "numeric",
                     hour: "numeric", minute: "2-digit", hour12: true,
+                    timeZone: "Asia/Dhaka",
                 });
                 const text =
 `Hello,

@@ -48,6 +48,12 @@ exports.getBookBySlug = async (req, res) => {
                     ],
                 },
             ],
+            order: [
+                [BookChapter, "sort_order", "ASC"],
+                [BookChapter, "id", "ASC"],
+                [BookChapter, BookTopic, "sort_order", "ASC"],
+                [BookChapter, BookTopic, "id", "ASC"],
+            ],
         });
 
         if (!book) {
@@ -56,9 +62,14 @@ exports.getBookBySlug = async (req, res) => {
 
         const bookData = book.toJSON();
 
-        let chapters = (bookData.BookChapters || []).sort((a, b) => a.sort_order - b.sort_order);
+        // sort_order tiebreaker: fall back to id ASC so newly created items (all sort_order=0) appear oldest-first
+        let chapters = (bookData.BookChapters || []).sort((a, b) =>
+            a.sort_order !== b.sort_order ? a.sort_order - b.sort_order : a.id - b.id
+        );
         chapters.forEach((ch) => {
-            ch.topics = (ch.BookTopics || []).sort((a, b) => a.sort_order - b.sort_order);
+            ch.topics = (ch.BookTopics || []).sort((a, b) =>
+                a.sort_order !== b.sort_order ? a.sort_order - b.sort_order : a.id - b.id
+            );
             delete ch.BookTopics;
         });
         delete bookData.BookChapters;

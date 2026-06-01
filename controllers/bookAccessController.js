@@ -138,10 +138,6 @@ exports.getTopicContent = async (req, res) => {
             });
         }
 
-        if (topic.status !== "published") {
-            return res.status(403).json({ message: "Access denied" });
-        }
-
         const student = await Student.findOne({
             where: { StudentId: req.user.username },
             attributes: ["CourseId"],

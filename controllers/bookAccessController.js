@@ -3,7 +3,6 @@ const Book = require("../models/Book");
 const BookChapter = require("../models/BookChapter");
 const BookTopic = require("../models/BookTopic");
 const BookTopicBatchAccess = require("../models/BookTopicBatchAccess");
-const Course = require("../models/Course");
 const Student = require("../models/Student");
 
 // GET /api/books — authenticated
@@ -27,7 +26,7 @@ exports.getPublishedBooks = async (req, res) => {
 
 // GET /api/books/:slug — authenticated
 // Admin: all chapters/topics (draft+published), no isUnlocked
-// Student: published only, isUnlocked per topic; content field never included
+// Student: all chapters/topics shown; isUnlocked per topic based on course_ids array
 exports.getBookBySlug = async (req, res) => {
     try {
         const { slug } = req.params;
@@ -75,8 +74,6 @@ exports.getBookBySlug = async (req, res) => {
         delete bookData.BookChapters;
 
         if (!isAdmin) {
-            // No status filtering — all chapters and topics of a published book are shown.
-            // Topic accessibility is governed entirely by book_topic_batch_access.
             const student = await Student.findOne({
                 where: { StudentId: req.user.username },
                 attributes: ["CourseId"],
@@ -88,14 +85,15 @@ exports.getBookBySlug = async (req, res) => {
             const allTopicIds = chapters.flatMap((ch) => ch.topics.map((t) => t.id));
 
             if (allTopicIds.length > 0) {
-                const unlockedAccess = await BookTopicBatchAccess.findAll({
-                    where: {
-                        topic_id: { [Op.in]: allTopicIds },
-                        course_id: student.CourseId,
-                    },
-                    attributes: ["topic_id"],
+                const accessRows = await BookTopicBatchAccess.findAll({
+                    where: { topic_id: { [Op.in]: allTopicIds } },
+                    attributes: ["topic_id", "course_ids"],
                 });
-                const unlockedIds = new Set(unlockedAccess.map((a) => a.topic_id));
+                const unlockedIds = new Set(
+                    accessRows
+                        .filter((a) => Array.isArray(a.course_ids) && a.course_ids.includes(student.CourseId))
+                        .map((a) => a.topic_id)
+                );
                 chapters.forEach((ch) => {
                     ch.topics = ch.topics.map((t) => ({ ...t, isUnlocked: unlockedIds.has(t.id) }));
                 });
@@ -117,7 +115,7 @@ exports.getBookBySlug = async (req, res) => {
 
 // GET /api/books/topics/:id/content — authenticated
 // Admin: always returns content
-// Student: 403 if topic not unlocked for their course
+// Student: 403 if their CourseId is not in the topic's course_ids array
 exports.getTopicContent = async (req, res) => {
     try {
         const { id } = req.params;
@@ -146,10 +144,11 @@ exports.getTopicContent = async (req, res) => {
             return res.status(403).json({ message: "Student profile not found" });
         }
 
-        const access = await BookTopicBatchAccess.findOne({
-            where: { topic_id: id, course_id: student.CourseId },
+        const accessRow = await BookTopicBatchAccess.findOne({
+            where: { topic_id: id },
+            attributes: ["course_ids"],
         });
-        if (!access) {
+        if (!accessRow || !Array.isArray(accessRow.course_ids) || !accessRow.course_ids.includes(student.CourseId)) {
             return res.status(403).json({ message: "Access denied: this topic is not unlocked for your course" });
         }
 
@@ -165,6 +164,7 @@ exports.getTopicContent = async (req, res) => {
 
 // POST /api/books/access/unlock — admin only
 // Body: { topicIds: [1,2,3], courseIds: ["SDET-B12", "SDET-B13"] }
+// Upsert-merge: merges new courseIds into the existing JSON array for each topic.
 exports.unlockTopics = async (req, res) => {
     try {
         const { topicIds, courseIds } = req.body;
@@ -174,17 +174,22 @@ exports.unlockTopics = async (req, res) => {
         }
 
         const unlockedBy = req.user.username;
-        const records = [];
+
         for (const topicId of topicIds) {
-            for (const courseId of courseIds) {
-                records.push({ topic_id: topicId, course_id: courseId, unlocked_by: unlockedBy });
+            const existing = await BookTopicBatchAccess.findOne({ where: { topic_id: topicId } });
+            if (existing) {
+                const merged = [...new Set([...(existing.course_ids || []), ...courseIds])];
+                await existing.update({ course_ids: merged, unlocked_by: unlockedBy });
+            } else {
+                await BookTopicBatchAccess.create({
+                    topic_id: topicId,
+                    course_ids: [...new Set(courseIds)],
+                    unlocked_by: unlockedBy,
+                });
             }
         }
 
-        // ignoreDuplicates generates INSERT IGNORE — safe to call multiple times
-        await BookTopicBatchAccess.bulkCreate(records, { ignoreDuplicates: true });
-
-        res.status(200).json({ message: `${records.length} topic-course combinations processed` });
+        res.status(200).json({ message: `Access updated for ${topicIds.length} topic(s)` });
     } catch (error) {
         console.error("Error unlocking topics:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -225,11 +230,8 @@ exports.getBookAccess = async (req, res) => {
                     model: BookTopic,
                     attributes: ["id", "title", "chapter_id"],
                 },
-                {
-                    model: Course,
-                    attributes: ["courseId", "course_title", "batch_no"],
-                },
             ],
+            order: [["updatedAt", "DESC"]],
         });
 
         res.status(200).json({ message: "Access records fetched", data: access });
@@ -241,6 +243,7 @@ exports.getBookAccess = async (req, res) => {
 
 // DELETE /api/books/access — admin only
 // Body: { topic_id, course_id }
+// Removes one course_id from the JSON array; deletes the row if the array becomes empty.
 exports.removeAccess = async (req, res) => {
     try {
         const { topic_id, course_id } = req.body;
@@ -249,12 +252,17 @@ exports.removeAccess = async (req, res) => {
             return res.status(400).json({ message: "topic_id and course_id are required" });
         }
 
-        const deleted = await BookTopicBatchAccess.destroy({
-            where: { topic_id, course_id },
-        });
-
-        if (!deleted) {
+        const record = await BookTopicBatchAccess.findOne({ where: { topic_id } });
+        if (!record) {
             return res.status(404).json({ message: "Access record not found" });
+        }
+
+        const updated = (record.course_ids || []).filter((id) => id !== course_id);
+
+        if (updated.length === 0) {
+            await record.destroy();
+        } else {
+            await record.update({ course_ids: updated });
         }
 
         res.status(200).json({ message: "Access removed successfully" });

@@ -3,6 +3,7 @@ const Book = require("../models/Book");
 const BookChapter = require("../models/BookChapter");
 const BookTopic = require("../models/BookTopic");
 const BookTopicBatchAccess = require("../models/BookTopicBatchAccess");
+const BookTopicStudentAccess = require("../models/BookTopicStudentAccess");
 const Student = require("../models/Student");
 
 // GET /api/books — authenticated
@@ -85,15 +86,22 @@ exports.getBookBySlug = async (req, res) => {
             const allTopicIds = chapters.flatMap((ch) => ch.topics.map((t) => t.id));
 
             if (allTopicIds.length > 0) {
-                const accessRows = await BookTopicBatchAccess.findAll({
-                    where: { topic_id: { [Op.in]: allTopicIds } },
-                    attributes: ["topic_id", "course_ids"],
-                });
-                const unlockedIds = new Set(
-                    accessRows
+                const [accessRows, studentAccessRows] = await Promise.all([
+                    BookTopicBatchAccess.findAll({
+                        where: { topic_id: { [Op.in]: allTopicIds } },
+                        attributes: ["topic_id", "course_ids"],
+                    }),
+                    BookTopicStudentAccess.findAll({
+                        where: { topic_id: { [Op.in]: allTopicIds }, student_id: req.user.username },
+                        attributes: ["topic_id"],
+                    }),
+                ]);
+                const unlockedIds = new Set([
+                    ...accessRows
                         .filter((a) => Array.isArray(a.course_ids) && a.course_ids.includes(student.CourseId))
-                        .map((a) => a.topic_id)
-                );
+                        .map((a) => a.topic_id),
+                    ...studentAccessRows.map((a) => a.topic_id),
+                ]);
                 chapters.forEach((ch) => {
                     ch.topics = ch.topics.map((t) => ({ ...t, isUnlocked: unlockedIds.has(t.id) }));
                 });
@@ -144,11 +152,13 @@ exports.getTopicContent = async (req, res) => {
             return res.status(403).json({ message: "Student profile not found" });
         }
 
-        const accessRow = await BookTopicBatchAccess.findOne({
-            where: { topic_id: id },
-            attributes: ["course_ids"],
-        });
-        if (!accessRow || !Array.isArray(accessRow.course_ids) || !accessRow.course_ids.includes(student.CourseId)) {
+        const [accessRow, studentAccessRow] = await Promise.all([
+            BookTopicBatchAccess.findOne({ where: { topic_id: id }, attributes: ["course_ids"] }),
+            BookTopicStudentAccess.findOne({ where: { topic_id: id, student_id: req.user.username }, attributes: ["id"] }),
+        ]);
+        const hasCourseAccess = accessRow && Array.isArray(accessRow.course_ids) && accessRow.course_ids.includes(student.CourseId);
+        const hasStudentAccess = !!studentAccessRow;
+        if (!hasCourseAccess && !hasStudentAccess) {
             return res.status(403).json({ message: "Access denied: this topic is not unlocked for your course" });
         }
 
@@ -237,6 +247,80 @@ exports.getBookAccess = async (req, res) => {
         res.status(200).json({ message: "Access records fetched", data: access });
     } catch (error) {
         console.error("Error fetching book access:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// GET /api/books/:bookId/access/students — admin only
+exports.getStudentAccess = async (req, res) => {
+    try {
+        const { bookId } = req.params;
+
+        const chapters = await BookChapter.findAll({ where: { book_id: bookId }, attributes: ["id"] });
+        if (!chapters.length) return res.status(200).json({ message: "No chapters found", data: [] });
+
+        const chapterIds = chapters.map((c) => c.id);
+        const topics = await BookTopic.findAll({
+            where: { chapter_id: { [Op.in]: chapterIds } },
+            attributes: ["id"],
+        });
+        if (!topics.length) return res.status(200).json({ message: "No topics found", data: [] });
+
+        const topicIds = topics.map((t) => t.id);
+        const access = await BookTopicStudentAccess.findAll({
+            where: { topic_id: { [Op.in]: topicIds } },
+            include: [{ model: BookTopic, attributes: ["id", "title", "chapter_id"] }],
+            order: [["updatedAt", "DESC"]],
+        });
+
+        res.status(200).json({ message: "Student access records fetched", data: access });
+    } catch (error) {
+        console.error("Error fetching student access:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// POST /api/books/access/unlock-students — admin only
+// Body: { topicIds: [1,2,3], studentIds: ["S001", "S002"] }
+exports.unlockTopicsForStudents = async (req, res) => {
+    try {
+        const { topicIds, studentIds } = req.body;
+
+        if (!Array.isArray(topicIds) || !Array.isArray(studentIds) || !topicIds.length || !studentIds.length) {
+            return res.status(400).json({ message: "topicIds and studentIds are required non-empty arrays" });
+        }
+
+        const unlockedBy = req.user.username;
+        for (const topicId of topicIds) {
+            for (const studentId of studentIds) {
+                await BookTopicStudentAccess.upsert({ topic_id: topicId, student_id: studentId, unlocked_by: unlockedBy });
+            }
+        }
+
+        res.status(200).json({ message: `Access granted for ${topicIds.length} topic(s) to ${studentIds.length} student(s)` });
+    } catch (error) {
+        console.error("Error unlocking topics for students:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// DELETE /api/books/access/student — admin only
+// Body: { topic_id, student_id }
+exports.removeStudentAccess = async (req, res) => {
+    try {
+        const { topic_id, student_id } = req.body;
+
+        if (!topic_id || !student_id) {
+            return res.status(400).json({ message: "topic_id and student_id are required" });
+        }
+
+        const record = await BookTopicStudentAccess.findOne({ where: { topic_id, student_id } });
+        if (!record) return res.status(404).json({ message: "Access record not found" });
+
+        await record.destroy();
+        res.status(200).json({ message: "Student access removed successfully" });
+    } catch (error) {
+        console.error("Error removing student access:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };

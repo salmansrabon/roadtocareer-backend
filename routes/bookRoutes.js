@@ -27,8 +27,11 @@ const {
 
 const {
     unlockTopics,
+    unlockTopicsForStudents,
     getBookAccess,
+    getStudentAccess,
     removeAccess,
+    removeStudentAccess,
     getPublishedBooks,
     getBookBySlug,
     getTopicContent,
@@ -42,6 +45,7 @@ router.get("/", authenticateUser, getPublishedBooks);
 // ── POST: static paths first, then dynamic /:bookId/* ─────────────────────────
 router.post("/", authenticateUser, requireAdmin, createBook);
 router.post("/access/unlock", authenticateUser, requireAdmin, unlockTopics);
+router.post("/access/unlock-students", authenticateUser, requireAdmin, unlockTopicsForStudents);
 router.post("/chapters/:chapterId/topics", authenticateUser, requireAdmin, createTopic);
 router.post("/:bookId/chapters", authenticateUser, requireAdmin, createChapter);
 
@@ -55,12 +59,14 @@ router.put("/:id/publish", authenticateUser, requireAdmin, togglePublish);     /
 router.put("/:id", authenticateUser, requireAdmin, updateBook);
 
 // ── DELETE: static /access and /chapters|topics/:id before /:id ───────────────
+router.delete("/access/student", authenticateUser, requireAdmin, removeStudentAccess);
 router.delete("/access", authenticateUser, requireAdmin, removeAccess);
 router.delete("/chapters/:id", authenticateUser, requireAdmin, deleteChapter);
 router.delete("/topics/:id", authenticateUser, requireAdmin, deleteTopic);
 router.delete("/:id", authenticateUser, requireAdmin, deleteBook);
 
 // ── Remaining dynamic GET routes ──────────────────────────────────────────────
+router.get("/:bookId/access/students", authenticateUser, requireAdmin, getStudentAccess);
 router.get("/:bookId/access", authenticateUser, requireAdmin, getBookAccess);
 router.get("/:slug", authenticateUser, getBookBySlug);                          // LAST
 

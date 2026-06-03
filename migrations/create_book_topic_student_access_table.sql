@@ -7,5 +7,6 @@ CREATE TABLE IF NOT EXISTS book_topic_student_access (
     updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_topic_student (topic_id, student_id),
     INDEX idx_btsa_topic_id (topic_id),
-    INDEX idx_btsa_student_id (student_id)
+    INDEX idx_btsa_student_id (student_id),
+    CONSTRAINT fk_btsa_topic FOREIGN KEY (topic_id) REFERENCES book_topics(id) ON DELETE CASCADE
 );

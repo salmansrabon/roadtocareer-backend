@@ -17,7 +17,8 @@ const EventForm = sequelize.define("EventForm", {
     },
     event_date: {
         type: DataTypes.DATE,
-        allowNull: false,
+        allowNull: true,
+        defaultValue: null,
     },
     fields_json: {
         type: DataTypes.JSON,

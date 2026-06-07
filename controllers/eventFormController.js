@@ -8,8 +8,8 @@ const createEventForm = async (req, res) => {
     try {
         const { title, short_description, event_date, fields, google_calendar_event_link } = req.body;
 
-        if (!title || !short_description || !event_date) {
-            return res.status(400).json({ message: "title, short_description, and event_date are required." });
+        if (!title || !short_description) {
+            return res.status(400).json({ message: "title and short_description are required." });
         }
         if (!fields || !Array.isArray(fields) || fields.length === 0) {
             return res.status(400).json({ message: "At least one dynamic field is required." });
@@ -141,25 +141,40 @@ const submitAudience = async (req, res) => {
                 const recipientEmail = submitted_data[emailField.name];
                 if (!recipientEmail) return;
 
-                const subject = `You're registered for ${form.title}!`;
-                const eventDate = new Date(form.event_date).toLocaleDateString("en-US", {
-                    weekday: "long", year: "numeric", month: "long", day: "numeric",
-                    hour: "numeric", minute: "2-digit", hour12: true,
-                    timeZone: "Asia/Dhaka",
-                });
-                const text =
+                const isGeneric = !form.event_date && !form.google_calendar_event_link;
+
+                let subject, text;
+                if (isGeneric) {
+                    subject = "Form Submission Confirmation";
+                    text =
+`Hello,
+
+Your form submission is recorded.
+
+Best regards,
+Road to SDET Team`;
+                } else {
+                    const eventDateLine = form.event_date
+                        ? `Date: ${new Date(form.event_date).toLocaleDateString("en-US", {
+                            weekday: "long", year: "numeric", month: "long", day: "numeric",
+                            hour: "numeric", minute: "2-digit", hour12: true,
+                            timeZone: "Asia/Dhaka",
+                        })}\n`
+                        : "";
+                    subject = `You're registered for ${form.title}!`;
+                    text =
 `Hello,
 
 Thank you for registering for "${form.title}"!
 
 Event Details:
-Date: ${eventDate}
-${form.short_description}
+${eventDateLine}${form.short_description}
 
 We look forward to seeing you there.
 
 Best regards,
 Road to SDET Team`;
+                }
 
                 const emailSent = await sendEmail(recipientEmail, subject, text, "text/plain");
 

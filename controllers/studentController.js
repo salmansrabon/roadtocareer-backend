@@ -390,6 +390,7 @@ exports.getAllStudents = async (req, res) => {
       company,
       isValid,
       isEnrolled,
+      isMigrated,
       remark,
       page = 1,
       limit = 10,
@@ -415,6 +416,8 @@ exports.getAllStudents = async (req, res) => {
     if (remark) whereClause.remark = { [Op.like]: `%${remark}%` };
     if (isEnrolled !== undefined && isEnrolled !== "")
       whereClause.isEnrolled = parseInt(isEnrolled);
+    if (isMigrated !== undefined && isMigrated !== "")
+      whereClause.isMigrated = isMigrated === "true";
 
     // ✅ Build include clause for isValid filter
     const includeClause = [
@@ -476,6 +479,7 @@ exports.getAllStudents = async (req, res) => {
         "isEmailPublic",
         "isLinkedInPublic",
         "isGithubPublic",
+        "isMigrated",
         "createdAt",
       ],
       include: includeClause,
@@ -1265,6 +1269,9 @@ exports.migrateStudent = async (req, res) => {
   if (!batch_no) {
     return res.status(400).json({ message: "batch_no is required." });
   }
+  if (!CourseId) {
+    return res.status(400).json({ message: "CourseId is required." });
+  }
 
   try {
     //Find the student
@@ -1287,6 +1294,7 @@ exports.migrateStudent = async (req, res) => {
         batch_no, // Update new batch
         previous_batch_no: oldBatch, // Save old batch to previous_batch_no
         previous_course_id: oldCourseId, // Save old course ID to previous_course_id
+        isMigrated: true,
       },
       { where: { studentId } }
     );

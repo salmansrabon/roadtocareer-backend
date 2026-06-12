@@ -46,6 +46,10 @@ const Student = sequelize.define("Student", {
         type: DataTypes.STRING,
         allowNull: true
     },
+    isMigrated: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
     courseTitle: {
         type: DataTypes.STRING,
         allowNull: false

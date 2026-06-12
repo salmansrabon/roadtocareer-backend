@@ -1,0 +1,2 @@
+ALTER TABLE students
+ADD COLUMN isMigrated BOOLEAN NOT NULL DEFAULT FALSE AFTER previous_course_id;

@@ -110,6 +110,11 @@ const getAnswersByAssignmentId = async (req, res) => {
 const getAnswersByStudentId = async (req, res) => {
   try {
     const studentId = req.params.studentId;
+    const { courseId, batch_no } = req.query;
+
+    const assignmentWhere = {};
+    if (courseId) assignmentWhere.courseId = courseId;
+    if (batch_no) assignmentWhere.batch_no = batch_no;
 
     const answers = await AssignmentAnswer.findAll({
       where: { StudentId: studentId },
@@ -117,7 +122,9 @@ const getAnswersByStudentId = async (req, res) => {
         {
           model: AssignmentQuestion,
           as: 'Assignment',
-          attributes: ['id', 'Assignment_Title', 'SubmissionDate']
+          attributes: ['id', 'Assignment_Title', 'SubmissionDate', 'courseId', 'batch_no'],
+          where: Object.keys(assignmentWhere).length ? assignmentWhere : undefined,
+          required: Object.keys(assignmentWhere).length > 0,
         }
       ],
       order: [['createdAt', 'DESC']]

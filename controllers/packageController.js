@@ -123,3 +123,18 @@ exports.deletePackage = async (req, res) => {
         res.status(500).json({ success: false, message: "Failed to delete package" });
     }
 };
+
+// 🔹 GET: Get package by course ID
+exports.getPackageByCourse = async (req, res) => {
+    const { courseId } = req.params;
+    try {
+        const pkg = await Package.findOne({ where: { courseId } });
+        if (!pkg) {
+            return res.status(404).json({ success: false, message: "No package found for this course." });
+        }
+        res.status(200).json({ success: true, package: pkg });
+    } catch (err) {
+        console.error("Error fetching package by course:", err);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};

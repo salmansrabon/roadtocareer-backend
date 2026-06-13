@@ -1829,18 +1829,13 @@ exports.saveCertificate = async (req, res) => {
       throw new Error(`Failed to write file: ${writeError.message}`);
     }
 
-    // ✅ Generate full URL path using BASE_URL from environment
-    const baseUrl =
-      process.env.BASE_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      "http://localhost:5000";
-    // ✅ Append a version token so each regeneration produces a UNIQUE URL.
-    // The PNG filename stays the same (overwritten in place, no orphan files),
-    // but the changed query string forces browsers/proxies to fetch the fresh
-    // image instead of serving a stale cached copy of the previous certificate.
-    const certificateUrl = `${baseUrl}/api/images/certificates/${filename}?v=${Date.now()}`;
+    // Route certificate URLs through the frontend so the backend port is never
+    // exposed in shared links. The frontend proxies /api/images/* to the backend
+    // via the rewrite in next.config.js.
+    const frontendBase =
+      process.env.FRONTEND_URL || "http://localhost:3000";
+    const certificateUrl = `${frontendBase}/api/images/certificates/${filename}?v=${Date.now()}`;
     console.log("  - Generated certificate URL:", certificateUrl);
-    console.log("  - BASE_URL from env:", process.env.BASE_URL);
 
     // ✅ Update student record with full URL
     try {
@@ -1868,7 +1863,7 @@ exports.saveCertificate = async (req, res) => {
       debug: {
         filename,
         filepath,
-        baseUrl,
+        frontendBase,
         fileSize: buffer.length,
       },
     });

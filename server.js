@@ -65,6 +65,14 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' })); // Increased limit for certificate images
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Prevent Nginx/browser from caching API responses
+app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/courses", courseRoutes);
 app.use("/api/packages", packageRoutes);

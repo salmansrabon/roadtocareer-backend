@@ -1314,6 +1314,8 @@ exports.migrateStudent = async (req, res) => {
         previous_batch_no: oldBatch, // Save old batch to previous_batch_no
         previous_course_id: oldCourseId, // Save old course ID to previous_course_id
         isMigrated: true,
+        certificate: null,      // Clear old saved certificate so it regenerates for new course
+        get_certificate: false, // Admin must re-enable after migration
       },
       { where: { studentId } }
     );

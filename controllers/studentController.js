@@ -424,7 +424,7 @@ exports.getAllStudents = async (req, res) => {
     const includeClause = [
       {
         model: Course,
-        attributes: ["courseId", "course_title"],
+        attributes: ["courseId", "course_title", "total_class"],
       },
       {
         model: User,
@@ -436,6 +436,11 @@ exports.getAllStudents = async (req, res) => {
                 isValid: parseInt(isValid),
               }
             : undefined,
+      },
+      {
+        model: Attendance,
+        attributes: ["attendanceList"],
+        required: false,
       },
     ];
 
@@ -489,11 +494,22 @@ exports.getAllStudents = async (req, res) => {
       limit: limitNumber,
     });
 
+    const mappedStudents = students.map((s) => {
+      const plain = s.toJSON();
+      const rawList = plain.Attendance?.attendanceList;
+      const parsed = parseAttendanceList(rawList);
+      const totalClass = plain.Course?.total_class || 30;
+      return {
+        ...plain,
+        attendanceCount: `${parsed.length}/${totalClass}`,
+      };
+    });
+
     return res.status(200).json({
       totalStudents,
       totalPages: Math.ceil(totalStudents / limitNumber),
       currentPage: pageNumber,
-      students,
+      students: mappedStudents,
     });
   } catch (error) {
     console.error("Error fetching students:", error);

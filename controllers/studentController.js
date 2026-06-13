@@ -1834,7 +1834,11 @@ exports.saveCertificate = async (req, res) => {
       process.env.BASE_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       "http://localhost:5000";
-    const certificateUrl = `${baseUrl}/api/images/certificates/${filename}`;
+    // ✅ Append a version token so each regeneration produces a UNIQUE URL.
+    // The PNG filename stays the same (overwritten in place, no orphan files),
+    // but the changed query string forces browsers/proxies to fetch the fresh
+    // image instead of serving a stale cached copy of the previous certificate.
+    const certificateUrl = `${baseUrl}/api/images/certificates/${filename}?v=${Date.now()}`;
     console.log("  - Generated certificate URL:", certificateUrl);
     console.log("  - BASE_URL from env:", process.env.BASE_URL);
 

@@ -744,6 +744,7 @@ exports.getStudentById = async (req, res) => {
         {
           model: Package,
           attributes: [
+            "id",
             "courseId",
             "packageName",
             "discountedFee",

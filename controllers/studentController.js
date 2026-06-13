@@ -10,6 +10,7 @@ const { sendEmail } = require("../utils/emailHelper");
 const sequelize = require("../config/db");
 const { grantDriveAccess } = require("../utils/googleDriveHelper");
 const AssignmentAnswer = require("../models/AssignmentAnswer");
+const AssignmentQuestion = require("../models/AssignmentQuestion");
 const { formatDate } = require("../utils/formatDate");
 const {
   parseAttendanceList,
@@ -716,6 +717,7 @@ exports.getStudentById = async (req, res) => {
         "isEmailPublic",
         "isLinkedInPublic",
         "isGithubPublic",
+        "isMigrated",
         "opinion",
         "aboutMe",
         "createdAt",
@@ -1448,32 +1450,43 @@ exports.getCourseProgress = async (req, res) => {
       }
     });
 
-    // 3. Get assignment count (out of 10 total assignments)
+    // 3. Fetch student's course to get totalClass and courseId
+    const student = await Student.findOne({ where: { StudentId: studentId } });
+    let totalClass = 30;
+    let courseId = null;
+    if (student) {
+      courseId = student.CourseId;
+      const course = await Course.findOne({ where: { courseId } });
+      if (course) totalClass = course.total_class || 30;
+    }
+
+    // 4. Get submitted assignment count (graded answers for this student)
     const assignmentCount = await AssignmentAnswer.count({
       where: { StudentId: studentId, Score: { [Op.ne]: null } },
     });
 
-    // 4. Fetch total_class from the student's course
-    const student = await Student.findOne({ where: { StudentId: studentId } });
-    let totalClass = 30;
-    if (student) {
-      const course = await Course.findOne({ where: { courseId: student.CourseId } });
-      if (course) totalClass = course.total_class || 30;
+    // 5. Get total assignment questions for this course
+    let totalAssignments = 1; // fallback to avoid division by zero
+    if (courseId) {
+      const count = await AssignmentQuestion.count({ where: { courseId } });
+      if (count > 0) totalAssignments = count;
     }
 
-    // 5. Calculate percentages
+    // 6. Calculate percentages
     const attendancePercentage = Math.min((attendanceCount / totalClass) * 100, 100);
-    const assignmentPercentage = Math.min((assignmentCount / 10) * 100, 100);
+    const assignmentPercentage = Math.min((assignmentCount / totalAssignments) * 100, 100);
 
-    // 5. Overall completion is the average of the two
+    // 7. Overall completion is the average of the two
     const courseCompletionPercentage = Math.round(
       (attendancePercentage + assignmentPercentage) / 2
     );
 
-    // 6. Return the results
+    // 8. Return the results
     res.json({
       attendanceCount,
       assignmentCount,
+      totalClass,
+      totalAssignments,
       attendancePercentage: Math.round(attendancePercentage),
       assignmentPercentage: Math.round(assignmentPercentage),
       courseCompletionPercentage,

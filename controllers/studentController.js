@@ -1294,7 +1294,7 @@ exports.migrateStudent = async (req, res) => {
 
   try {
     //Find the student
-    const student = await Student.findOne({ where: { studentId } });
+    const student = await Student.findOne({ where: { StudentId: studentId } });
     if (!student) {
       return res
         .status(404)
@@ -1317,7 +1317,7 @@ exports.migrateStudent = async (req, res) => {
         certificate: null,      // Clear old saved certificate so it regenerates for new course
         get_certificate: false, // Admin must re-enable after migration
       },
-      { where: { studentId } }
+      { where: { StudentId: studentId } }
     );
 
     // Lookup the course's drive folder ID

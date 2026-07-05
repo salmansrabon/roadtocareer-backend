@@ -77,11 +77,13 @@ exports.getBookBySlug = async (req, res) => {
         if (!isAdmin) {
             const student = await Student.findOne({
                 where: { StudentId: req.user.username },
-                attributes: ["CourseId"],
+                attributes: ["CourseId", "previous_course_id"],
             });
             if (!student) {
                 return res.status(403).json({ message: "Student profile not found" });
             }
+
+            const studentCourseIds = [student.CourseId, student.previous_course_id].filter(Boolean);
 
             const allTopicIds = chapters.flatMap((ch) => ch.topics.map((t) => t.id));
 
@@ -98,7 +100,7 @@ exports.getBookBySlug = async (req, res) => {
                 ]);
                 const unlockedIds = new Set([
                     ...accessRows
-                        .filter((a) => Array.isArray(a.course_ids) && a.course_ids.includes(student.CourseId))
+                        .filter((a) => Array.isArray(a.course_ids) && a.course_ids.some((id) => studentCourseIds.includes(id)))
                         .map((a) => a.topic_id),
                     ...studentAccessRows.map((a) => a.topic_id),
                 ]);
@@ -146,17 +148,20 @@ exports.getTopicContent = async (req, res) => {
 
         const student = await Student.findOne({
             where: { StudentId: req.user.username },
-            attributes: ["CourseId"],
+            attributes: ["CourseId", "previous_course_id"],
         });
         if (!student) {
             return res.status(403).json({ message: "Student profile not found" });
         }
 
+        const studentCourseIds = [student.CourseId, student.previous_course_id].filter(Boolean);
+
         const [accessRow, studentAccessRow] = await Promise.all([
             BookTopicBatchAccess.findOne({ where: { topic_id: id }, attributes: ["course_ids"] }),
             BookTopicStudentAccess.findOne({ where: { topic_id: id, student_id: req.user.username }, attributes: ["id"] }),
         ]);
-        const hasCourseAccess = accessRow && Array.isArray(accessRow.course_ids) && accessRow.course_ids.includes(student.CourseId);
+        const hasCourseAccess =
+            accessRow && Array.isArray(accessRow.course_ids) && accessRow.course_ids.some((courseId) => studentCourseIds.includes(courseId));
         const hasStudentAccess = !!studentAccessRow;
         if (!hasCourseAccess && !hasStudentAccess) {
             return res.status(403).json({ message: "Access denied: this topic is not unlocked for your course" });

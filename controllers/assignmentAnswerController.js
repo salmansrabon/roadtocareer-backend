@@ -113,8 +113,13 @@ const getAnswersByStudentId = async (req, res) => {
     const { courseId, batch_no } = req.query;
 
     const assignmentWhere = {};
-    if (courseId) assignmentWhere.courseId = courseId;
-    if (batch_no) assignmentWhere.batch_no = batch_no;
+    if (courseId) {
+      // courseId alone identifies the batch; don't also require batch_no to match —
+      // previous_course_id/previous_batch_no can be updated independently and drift apart
+      assignmentWhere.courseId = courseId;
+    } else if (batch_no) {
+      assignmentWhere.batch_no = batch_no;
+    }
 
     const answers = await AssignmentAnswer.findAll({
       where: { StudentId: studentId },

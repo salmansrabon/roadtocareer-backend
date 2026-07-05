@@ -84,11 +84,13 @@ const getAllAssignmentQuestions = async (req, res) => {
 
         if (assignmentId) {
             whereClause.id = assignmentId; // ✅ Filter by AssignmentId
-        } if (batch_no) {
-            whereClause.batch_no = batch_no; // ✅ Otherwise filter by Batch No
         }
         if (courseId) {
-            whereClause.courseId = courseId; // ✅ Optional: Filter by CourseId
+            // courseId alone identifies the batch; don't also require batch_no to match —
+            // previous_course_id/previous_batch_no can be updated independently and drift apart
+            whereClause.courseId = courseId;
+        } else if (batch_no) {
+            whereClause.batch_no = batch_no; // ✅ Otherwise filter by Batch No
         }
 
         const assignments = await AssignmentQuestion.findAll({ where: whereClause });

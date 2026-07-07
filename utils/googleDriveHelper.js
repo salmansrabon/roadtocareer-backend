@@ -72,6 +72,36 @@ const removeDriveAccess = async (fileId, permissionId) => {
 };
 
 /**
+ * ✅ Revoke Google Drive Access for a User by Email (no stored permissionId needed)
+ * Looks up the permission granted to this email on the file/folder, then deletes it.
+ * @param {string} fileId - File/Folder ID
+ * @param {string} email - User's email
+ * @returns {Promise<Object>} - Delete response
+ */
+const revokeDriveAccessByEmail = async (fileId, email) => {
+    try {
+        const response = await drive.permissions.list({
+            fileId: fileId,
+            supportsAllDrives: true,
+            fields: "permissions(id, emailAddress)",
+        });
+
+        const match = (response.data.permissions || []).find(
+            (p) => p.emailAddress && p.emailAddress.toLowerCase() === email.toLowerCase()
+        );
+
+        if (!match) {
+            return { success: false, error: "No matching Drive permission found for this email." };
+        }
+
+        return await removeDriveAccess(fileId, match.id);
+    } catch (error) {
+        console.error("Error revoking Google Drive access by email:", error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
  * List Files/Folders Under a Parent in Shared Drive
  * @param {string} parentFolderId - The ID of the parent folder
  * @param {string} sharedDriveId - The ID of the shared drive
@@ -97,4 +127,4 @@ const listFolderContents = async (parentFolderId, sharedDriveId) => {
 
 
 
-module.exports = { grantDriveAccess, removeDriveAccess, listFolderContents };
+module.exports = { grantDriveAccess, removeDriveAccess, revokeDriveAccessByEmail, listFolderContents };

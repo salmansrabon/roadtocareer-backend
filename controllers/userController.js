@@ -1,4 +1,4 @@
-const { grantDriveAccess, removeDriveAccess } = require("../utils/googleDriveHelper");
+const { grantDriveAccess, removeDriveAccess, revokeDriveAccessByEmail } = require("../utils/googleDriveHelper");
 const { sendEmail } = require("../utils/emailHelper");
 const { getDiscordInviteForEmail } = require("../utils/discordHelper");
 const User = require("../models/User");
@@ -34,6 +34,15 @@ exports.updateUserStatus = async (req, res) => {
 
         let responseMessage = "User status updated successfully";
         const fileId = student.Course?.drive_folder_id;
+
+        let previousFileId = null;
+        if (student.previous_course_id) {
+            const previousCourse = await Course.findOne({
+                where: { courseId: student.previous_course_id },
+                attributes: ["drive_folder_id"]
+            });
+            previousFileId = previousCourse?.drive_folder_id || null;
+        }
 
         // ✅ Update isValid Status First
         await user.update({ isValid });
@@ -81,6 +90,14 @@ exports.updateUserStatus = async (req, res) => {
             } else {
                 responseMessage += " & No Drive folder ID available for access";
             }
+
+            // ✅ Also grant access to the previous (recent) batch's Drive folder, if any
+            if (previousFileId) {
+                const prevDriveResponse = await grantDriveAccess(previousFileId, user.email);
+                responseMessage += prevDriveResponse.success
+                    ? " & Previous batch Drive access granted"
+                    : " & Previous batch Drive access failed to grant";
+            }
         } else {
             if (student.google_access_id && fileId) {
                 const revokeResponse = await removeDriveAccess(fileId, student.google_access_id);
@@ -89,6 +106,14 @@ exports.updateUserStatus = async (req, res) => {
                 }
                 await student.update({ google_access_id: null });
                 responseMessage = "User deactivated & Drive access revoked";
+            }
+
+            // ✅ Also revoke access to the previous (recent) batch's Drive folder, if any
+            if (previousFileId) {
+                const prevRevokeResponse = await revokeDriveAccessByEmail(previousFileId, user.email);
+                responseMessage += prevRevokeResponse.success
+                    ? " & Previous batch Drive access revoked"
+                    : "";
             }
         }
 

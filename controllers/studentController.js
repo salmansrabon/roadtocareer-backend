@@ -856,6 +856,8 @@ exports.updateStudent = async (req, res) => {
       return res.status(404).json({ message: "Student not found" });
     }
 
+    const oldPreviousCourseId = student.previous_course_id;
+
     // ✅ Check if get_certificate changed from false to true
     const certificateJustEnabled =
       !student.get_certificate &&
@@ -917,6 +919,21 @@ exports.updateStudent = async (req, res) => {
     // ✅ If email is updated, also update it in the User table
     if (email && user) {
       await user.update({ email });
+    }
+
+    // ✅ Grant Drive access for the previous course's batch when Recent Course ID is set/changed
+    let driveAccessResult = null;
+    if (previous_course_id && previous_course_id !== oldPreviousCourseId) {
+      const previousCourse = await Course.findOne({ where: { courseId: previous_course_id } });
+      if (previousCourse && previousCourse.drive_folder_id) {
+        driveAccessResult = await grantDriveAccess(
+          previousCourse.drive_folder_id,
+          email || student.email
+        );
+        console.log("Drive access result (previous course):", driveAccessResult);
+      } else {
+        console.warn(`No Drive folder found for previous CourseId: ${previous_course_id}`);
+      }
     }
 
     // ✅ Send email notification when certificate is enabled
@@ -998,7 +1015,10 @@ exports.updateStudent = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: "Student details updated successfully",
+      message:
+        driveAccessResult && !driveAccessResult.success
+          ? `Student details updated, but failed to grant Drive access for previous course: ${driveAccessResult.error}`
+          : "Student details updated successfully",
       student,
     });
   } catch (error) {

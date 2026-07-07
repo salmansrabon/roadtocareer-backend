@@ -66,6 +66,29 @@ const removeDriveAccess = async (fileId, permissionId) => {
 
         return { success: true, message: "Drive access revoked" };
     } catch (error) {
+        // Permission may be inherited from an ancestor folder/shared drive — Drive only allows
+        // deleting it at the level where it was actually granted, not on the descendant folder.
+        if (error.message && error.message.includes("cannot delete the permission")) {
+            try {
+                const permission = await drive.permissions.get({
+                    fileId,
+                    permissionId,
+                    supportsAllDrives: true,
+                    fields: "permissionDetails",
+                });
+                const inheritedFrom = permission.data.permissionDetails?.[0]?.inheritedFrom;
+                if (inheritedFrom && inheritedFrom !== fileId) {
+                    await drive.permissions.delete({
+                        fileId: inheritedFrom,
+                        permissionId,
+                        supportsAllDrives: true,
+                    });
+                    return { success: true, message: "Drive access revoked (inherited permission removed at source folder)" };
+                }
+            } catch (retryError) {
+                console.error("Error resolving inherited Drive permission:", retryError);
+            }
+        }
         console.error("Error removing Google Drive access:", error);
         return { success: false, error: error.message };
     }

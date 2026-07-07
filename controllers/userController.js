@@ -99,21 +99,28 @@ exports.updateUserStatus = async (req, res) => {
                     : " & Previous batch Drive access failed to grant";
             }
         } else {
+            responseMessage = "User deactivated";
+
+            // ✅ Try to Revoke Drive Access (But do not block deactivation if failed — isValid is already updated)
             if (student.google_access_id && fileId) {
                 const revokeResponse = await removeDriveAccess(fileId, student.google_access_id);
-                if (!revokeResponse.success) {
-                    return res.status(500).json({ message: "Failed to revoke Drive access", error: revokeResponse.error });
+                if (revokeResponse.success) {
+                    await student.update({ google_access_id: null });
+                    responseMessage += " & Drive access revoked";
+                } else {
+                    responseMessage += " & Drive access failed to revoke";
+                    console.error("Failed to revoke Drive access:", revokeResponse.error);
                 }
-                await student.update({ google_access_id: null });
-                responseMessage = "User deactivated & Drive access revoked";
             }
 
             // ✅ Also revoke access to the previous (recent) batch's Drive folder, if any
             if (previousFileId) {
                 const prevRevokeResponse = await revokeDriveAccessByEmail(previousFileId, user.email);
-                responseMessage += prevRevokeResponse.success
-                    ? " & Previous batch Drive access revoked"
-                    : "";
+                if (prevRevokeResponse.success) {
+                    responseMessage += " & Previous batch Drive access revoked";
+                } else {
+                    console.error("Failed to revoke previous batch Drive access:", prevRevokeResponse.error);
+                }
             }
         }
 

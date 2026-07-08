@@ -501,7 +501,7 @@ exports.getAllStudents = async (req, res) => {
       const totalClass = plain.Course?.total_class || 30;
       return {
         ...plain,
-        attendanceCount: `${parsed.length}/${totalClass}`,
+        attendanceCount: `${parsed.length} of ${totalClass}`,
       };
     });
 
@@ -1096,6 +1096,24 @@ exports.markAttendance = async (req, res) => {
     );
     const classTimeUTC = classTimeLocal.clone().utc();
     const maxAllowedTimeUTC = classTimeUTC.clone().add(2, "hours");
+
+    // ✅ Ensure the submitted date actually falls on a configured class day
+    let allowedClassDays = course.class_days;
+    if (typeof allowedClassDays === "string") {
+      try {
+        allowedClassDays = JSON.parse(allowedClassDays);
+      } catch {
+        allowedClassDays = [];
+      }
+    }
+    if (!Array.isArray(allowedClassDays)) allowedClassDays = [];
+
+    const submittedDayName = classTimeLocal.format("dddd"); // e.g. "Tuesday"
+    if (!allowedClassDays.includes(submittedDayName)) {
+      return res.status(400).json({
+        message: `Attendance can only be given on scheduled class days (${allowedClassDays.join(", ") || "none configured"}).`,
+      });
+    }
 
     // ✅ If submitted time is outside the valid window, reject the request
     if (

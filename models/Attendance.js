@@ -47,7 +47,7 @@ const Attendance = sequelize.define("Attendance", {
     timestamps: true
 });
 
-Student.hasOne(Attendance, { foreignKey: "StudentId" });
-Attendance.belongsTo(Student, { foreignKey: "StudentId" });
+Student.hasOne(Attendance, { foreignKey: "StudentId", sourceKey: "StudentId" });
+Attendance.belongsTo(Student, { foreignKey: "StudentId", targetKey: "StudentId" });
 
 module.exports = Attendance;

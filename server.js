@@ -1,4 +1,5 @@
 require("dotenv").config();
+process.env.TZ = "UTC"; // ✅ Pin the process clock to UTC so date/time logic (e.g. attendance windows) is identical no matter which country the server is deployed in
 const {runSeeders} = require("./scripts/seed");
 
 const express = require("express");

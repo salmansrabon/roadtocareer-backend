@@ -931,6 +931,18 @@ exports.updateStudent = async (req, res) => {
           email || student.email
         );
         console.log("Drive access result (previous course):", driveAccessResult);
+
+        if (driveAccessResult.success) {
+          try {
+            await sendEmail(
+              email || student.email,
+              "Google Drive Access Granted",
+              `Hi, your request for the ${previousCourse.batch_no} is granted. You have got the google drive access and latest assignments assigned to this ${previousCourse.batch_no}\n\nRegards,\nTeam, Road to SDET`
+            );
+          } catch (emailError) {
+            console.error("Error sending previous batch access email:", emailError);
+          }
+        }
       } else {
         console.warn(`No Drive folder found for previous CourseId: ${previous_course_id}`);
       }

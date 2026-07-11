@@ -1,4 +1,5 @@
 const Job = require('../models/Job');
+const JobView = require('../models/JobView');
 const { Op } = require('sequelize');
 const sequelize = require('../config/db');
 
@@ -221,6 +222,30 @@ exports.updateJob = async (req, res) => {
     res.status(500).json({ message: 'Failed to update job.', error: error.message });
   }
 };
+exports.incrementJobView = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ipAddress = req.ip;
+
+    try {
+      await JobView.create({ jobId: id, ipAddress });
+    } catch (err) {
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        // Already viewed from this IP — not a new view, don't increment.
+        return res.status(200).json({ message: 'View already recorded for this IP.' });
+      }
+      throw err;
+    }
+
+    await Job.increment('views', { where: { id } });
+
+    res.status(200).json({ message: 'View recorded.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to record view.', error: error.message });
+  }
+};
+
 exports.deleteJob = async (req, res) => {
   try {
     const { id } = req.params;

@@ -48,6 +48,11 @@ const Job = sequelize.define("Job", {
         type: DataTypes.DATE,
         allowNull: true,
         defaultValue: DataTypes.NOW // Default to current date if not provided
+    },
+    views: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
     }
 }, {
     tableName: "jobs",

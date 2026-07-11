@@ -43,6 +43,10 @@ const bookRoutes = require("./routes/bookRoutes");
 
 const app = express();
 
+// Trust the reverse proxy so req.ip resolves the real client IP (needed for
+// per-IP job view tracking) instead of always seeing the proxy's address.
+app.set('trust proxy', true);
+
 // ✅ CORS Configuration - Allow requests from frontend
 const corsOptions = {
     origin: [

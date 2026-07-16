@@ -4,10 +4,18 @@ const User = require("../models/User");
 const Attendance = require("../models/Attendance");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
-const { sendEmail } = require("../utils/emailHelper");
+const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
 const { isTodayAClassDay, hasAttendedOnDate, getPreviousClassDay } = require("../utils/attendanceHelper");
 
 const TIMEZONE = "Asia/Dhaka";
+
+const escapeCSV = (value) => {
+  const str = String(value ?? "");
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
 
 const buildMissedClassEmailBody = (studentName, previousDateStr, dateStr, courseTitle) => `Dear ${studentName},
 
@@ -21,9 +29,58 @@ Best regards,
 Road to SDET Team
 WhatsApp: +8801782808778`;
 
+async function sendAdminAbsentListSummary(todayLocal, mailedStudents) {
+  if (mailedStudents.length === 0) {
+    console.log("[attendanceReminderJob] No students were mailed today — skipping admin summary.");
+    return;
+  }
+
+  try {
+    const admins = await User.findAll({
+      where: { role: "admin" },
+      attributes: ["email"],
+    });
+
+    if (admins.length === 0) {
+      console.log("[attendanceReminderJob] No admin users found — skipping admin summary.");
+      return;
+    }
+
+    const dateStr = todayLocal.format("DD-MM-YYYY");
+    const headers = ["Batch No", "Student Name", "Email", "Profession", "isMigrated"];
+    const csvRows = [headers.map(escapeCSV).join(",")];
+    mailedStudents.forEach((s) => {
+      csvRows.push(
+        [s.batch_no, s.studentName, s.email, s.profession, s.isMigrated].map(escapeCSV).join(",")
+      );
+    });
+    const csvContent = csvRows.join("\n");
+    const filename = `${dateStr}-absent-students-list.csv`;
+
+    const toAddresses = admins.map((a) => a.email).join(", ");
+    const subject = `Absent Students List - ${dateStr}`;
+    const body = `Hi,\n\n${mailedStudents.length} student(s) were emailed today (${dateStr}) for missing two consecutive classes.\n\nThe full list is attached as a CSV.\n\nBest regards,\nRoad to SDET Team`;
+
+    const sent = await sendEmailWithAttachment(toAddresses, subject, body, {
+      filename,
+      content: csvContent,
+      mimeType: "text/csv",
+    });
+
+    if (sent) {
+      console.log(`[attendanceReminderJob] Admin summary (${filename}) sent to ${toAddresses}.`);
+    } else {
+      console.warn(`[attendanceReminderJob] sendEmailWithAttachment returned false for admin summary.`);
+    }
+  } catch (err) {
+    console.error("[attendanceReminderJob] Failed to send admin summary:", err);
+  }
+}
+
 async function runAttendanceReminderJob() {
   console.log("⏰ [attendanceReminderJob] Starting daily missed-attendance email job...");
   const todayLocal = moment.tz(TIMEZONE);
+  const mailedStudents = [];
 
   try {
     const courses = await Course.findAll({
@@ -79,6 +136,13 @@ async function runAttendanceReminderJob() {
             const sent = await sendEmail(student.email, subject, body);
             if (sent) {
               console.log(`[attendanceReminderJob] Reminder sent to ${student.email} (${student.StudentId}).`);
+              mailedStudents.push({
+                batch_no: student.batch_no,
+                studentName: student.student_name,
+                email: student.email,
+                profession: student.profession,
+                isMigrated: student.isMigrated,
+              });
             } else {
               console.warn(`[attendanceReminderJob] sendEmail returned false for ${student.email}.`);
             }
@@ -90,6 +154,8 @@ async function runAttendanceReminderJob() {
         console.error(`[attendanceReminderJob] Error processing course ${course.courseId}:`, courseErr);
       }
     }
+
+    await sendAdminAbsentListSummary(todayLocal, mailedStudents);
 
     console.log("✅ [attendanceReminderJob] Daily missed-attendance email job finished.");
   } catch (err) {

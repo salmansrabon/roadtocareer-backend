@@ -393,6 +393,7 @@ exports.getAllStudents = async (req, res) => {
       isEnrolled,
       isMigrated,
       remark,
+      maxAttendance,
       page = 1,
       limit = 10,
     } = req.query;
@@ -444,6 +445,83 @@ exports.getAllStudents = async (req, res) => {
       },
     ];
 
+    const studentAttributes = [
+      "StudentId",
+      "salutation",
+      "student_name",
+      "email",
+      "mobile",
+      "university",
+      "batch_no",
+      "courseTitle",
+      "package",
+      "profession",
+      "company",
+      "designation",
+      "experience",
+      "employment",
+      "skill",
+      "lookingForJob",
+      "isISTQBCertified",
+      "knowMe",
+      "remark",
+      "due",
+      "isEnrolled",
+      "photo",
+      "certificate",
+      "get_certificate",
+      "passingYear",
+      "linkedin",
+      "github",
+      "isMobilePublic",
+      "isEmailPublic",
+      "isLinkedInPublic",
+      "isGithubPublic",
+      "isMigrated",
+      "createdAt",
+    ];
+
+    const withAttendanceCount = (s) => {
+      const plain = s.toJSON();
+      const rawList = plain.Attendance?.attendanceList;
+      const parsed = parseAttendanceList(rawList);
+      const totalClass = plain.Course?.total_class || 30;
+      return {
+        ...plain,
+        attendanceNumber: parsed.length,
+        attendanceCount: `${parsed.length} of ${totalClass}`,
+      };
+    };
+
+    // ✅ attendanceNumber only exists after parsing the Attendance.attendanceList
+    // JSON blob in JS, so it can't be pushed into whereClause/SQL LIMIT-OFFSET.
+    // When this filter is used, fetch every row matching the other filters,
+    // filter+paginate in JS, and skip the SQL-level pagination below entirely.
+    if (maxAttendance !== undefined && maxAttendance !== "") {
+      const maxAttendanceNumber = parseInt(maxAttendance);
+
+      const allMatching = await Student.findAll({
+        where: whereClause,
+        attributes: studentAttributes,
+        include: includeClause,
+        order: [[Sequelize.literal("`Student`.`createdAt`"), "DESC"]],
+      });
+
+      const filtered = allMatching
+        .map(withAttendanceCount)
+        .filter((s) => s.attendanceNumber <= maxAttendanceNumber)
+        .map(({ attendanceNumber, ...rest }) => rest);
+
+      const totalStudents = filtered.length;
+
+      return res.status(200).json({
+        totalStudents,
+        totalPages: Math.ceil(totalStudents / limitNumber),
+        currentPage: pageNumber,
+        students: filtered.slice(offset, offset + limitNumber),
+      });
+    }
+
     // ✅ First get total count with same filters
     const totalStudents = await Student.count({
       where: whereClause,
@@ -453,41 +531,7 @@ exports.getAllStudents = async (req, res) => {
     // ✅ Now fetch paginated data
     const students = await Student.findAll({
       where: whereClause,
-      attributes: [
-        "StudentId",
-        "salutation",
-        "student_name",
-        "email",
-        "mobile",
-        "university",
-        "batch_no",
-        "courseTitle",
-        "package",
-        "profession",
-        "company",
-        "designation",
-        "experience",
-        "employment",
-        "skill",
-        "lookingForJob",
-        "isISTQBCertified",
-        "knowMe",
-        "remark",
-        "due",
-        "isEnrolled",
-        "photo",
-        "certificate",
-        "get_certificate",
-        "passingYear",
-        "linkedin",
-        "github",
-        "isMobilePublic",
-        "isEmailPublic",
-        "isLinkedInPublic",
-        "isGithubPublic",
-        "isMigrated",
-        "createdAt",
-      ],
+      attributes: studentAttributes,
       include: includeClause,
       order: [[Sequelize.literal("`Student`.`createdAt`"), "DESC"]],
       offset,
@@ -495,14 +539,8 @@ exports.getAllStudents = async (req, res) => {
     });
 
     const mappedStudents = students.map((s) => {
-      const plain = s.toJSON();
-      const rawList = plain.Attendance?.attendanceList;
-      const parsed = parseAttendanceList(rawList);
-      const totalClass = plain.Course?.total_class || 30;
-      return {
-        ...plain,
-        attendanceCount: `${parsed.length} of ${totalClass}`,
-      };
+      const { attendanceNumber, ...rest } = withAttendanceCount(s);
+      return rest;
     });
 
     return res.status(200).json({

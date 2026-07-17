@@ -133,7 +133,7 @@ const revokeDriveAccessByEmail = async (fileId, email) => {
 const listFolderContents = async (parentFolderId, sharedDriveId) => {
     try {
         const response = await drive.files.list({
-            q: `'${parentFolderId}' in parents`,
+            q: `'${parentFolderId}' in parents and trashed = false`,
             corpora: 'drive',
             driveId: sharedDriveId,
             includeItemsFromAllDrives: true,

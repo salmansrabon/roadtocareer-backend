@@ -345,7 +345,7 @@ class SeoController {
             console.log('✅ Processing AI suggestions for route:', page_route);
 
             // Create AI prompt for SEO suggestions
-            const prompt = `You are an SEO expert. Generate SEO-optimized content for a webpage with the route "${page_route}" for "Road to Career" - a software testing and QA training institute in Bangladesh that offers SDET courses, QA training, and software testing education.
+            const prompt = `You are an SEO expert. Generate SEO-optimized content for a webpage with the route "${page_route}" for "Road to SDET" - a software testing and QA training institute in Bangladesh that offers SDET courses, QA training, and software testing education.
 
 Please generate:
 1. A compelling page title (50-60 characters)
@@ -360,7 +360,7 @@ Please generate:
 10. SEO priority (0.1-1.0 based on page importance)
 11. Change frequency for sitemap
 
-Context about Road to Career:
+Context about Road to SDET:
 - Offers industry-ready SQA training
 - Provides full stack testing courses
 - Expert mentorship and hands-on projects
@@ -432,14 +432,14 @@ Return ONLY a valid JSON object in this exact format (no markdown, no extra text
                 
                 // Ensure all required fields are present, fill in missing ones
                 const defaultValues = {
-                    page_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                    meta_description: `Explore our ${page_route.replace('/', '').replace('-', ' ')} page at Road to Career - your destination for quality software testing education.`,
-                    meta_keywords: 'Road to Career, software testing, QA training, SDET course, automation testing',
-                    og_title: suggestions.page_title || `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                    og_description: suggestions.meta_description || `Discover quality software testing education at Road to Career`,
+                    page_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                    meta_description: `Explore our ${page_route.replace('/', '').replace('-', ' ')} page at Road to SDET - your destination for quality software testing education.`,
+                    meta_keywords: 'Road to SDET, software testing, QA training, SDET course, automation testing',
+                    og_title: suggestions.page_title || `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                    og_description: suggestions.meta_description || `Discover quality software testing education at Road to SDET`,
                     og_image: 'https://roadtocareer.net/og-image.jpg',
-                    twitter_title: suggestions.page_title || suggestions.og_title || `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                    twitter_description: suggestions.meta_description || suggestions.og_description || `Discover quality software testing education at Road to Career`,
+                    twitter_title: suggestions.page_title || suggestions.og_title || `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                    twitter_description: suggestions.meta_description || suggestions.og_description || `Discover quality software testing education at Road to SDET`,
                     twitter_image: 'https://roadtocareer.net/og-image.jpg',
                     priority: 0.5,
                     change_frequency: 'monthly'
@@ -459,14 +459,14 @@ Return ONLY a valid JSON object in this exact format (no markdown, no extra text
                 
                 // Fallback to basic suggestions if AI parsing fails
                 suggestions = {
-                    page_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                    meta_description: `Explore our ${page_route.replace('/', '').replace('-', ' ')} page at Road to Career - your destination for quality software testing education.`,
-                    meta_keywords: 'Road to Career, software testing, QA training, SDET course, automation testing',
-                    og_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                    og_description: `Discover quality software testing education at Road to Career`,
+                    page_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                    meta_description: `Explore our ${page_route.replace('/', '').replace('-', ' ')} page at Road to SDET - your destination for quality software testing education.`,
+                    meta_keywords: 'Road to SDET, software testing, QA training, SDET course, automation testing',
+                    og_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                    og_description: `Discover quality software testing education at Road to SDET`,
                     og_image: 'https://roadtocareer.net/og-image.jpg',
-                    twitter_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                    twitter_description: `Discover quality software testing education at Road to Career`,
+                    twitter_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                    twitter_description: `Discover quality software testing education at Road to SDET`,
                     twitter_image: 'https://roadtocareer.net/og-image.jpg',
                     priority: 0.5,
                     change_frequency: 'monthly'
@@ -489,13 +489,13 @@ Return ONLY a valid JSON object in this exact format (no markdown, no extra text
             
             // Fallback suggestions in case of API error
             const fallbackSuggestions = {
-                page_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
-                meta_description: `Learn software testing and QA skills with Road to Career's comprehensive training programs.`,
-                meta_keywords: 'Road to Career, software testing, QA training, SDET course, automation testing, manual testing',
-                og_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
+                page_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
+                meta_description: `Learn software testing and QA skills with Road to SDET's comprehensive training programs.`,
+                meta_keywords: 'Road to SDET, software testing, QA training, SDET course, automation testing, manual testing',
+                og_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
                 og_description: 'Join Bangladesh\'s leading software testing training institute',
                 og_image: 'https://roadtocareer.net/og-image.jpg',
-                twitter_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to Career`,
+                twitter_title: `${page_route.replace('/', '').replace('-', ' ').toUpperCase()} | Road to SDET`,
                 twitter_description: 'Join Bangladesh\'s leading software testing training institute',
                 twitter_image: 'https://roadtocareer.net/og-image.jpg',
                 canonical_url: `https://roadtocareer.net${page_route}`,

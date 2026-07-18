@@ -49,15 +49,15 @@ INSERT INTO seo (page_route, page_title, meta_description, meta_keywords, og_tit
 'daily'),
 
 -- QA Talent Page
-('/qa-talent', 'Find Talented SQA - Road to Career | QA & SDET Professionals Bangladesh',
+('/qa-talent', 'Find Talented SQA - Road to SDET | QA & SDET Professionals Bangladesh',
 'Discover talented QA and SDET professionals from Bangladesh. Browse skilled software testers, automation engineers, and quality assurance specialists trained at Road to SDET.',
 'hire QA engineers Bangladesh, SDET professionals Dhaka, software testing talent, quality assurance experts, automation testers Bangladesh, find QA talent, hire software testers, selenium experts, automation testing professionals, manual testers Bangladesh, ISTQB certified professionals',
-'Find Talented SQA | Road to Career - QA & SDET Professionals',
+'Find Talented SQA | Road to SDET - QA & SDET Professionals',
 'Discover talented QA and SDET professionals from Bangladesh. Skilled in automation testing, API testing, manual testing, and more.',
 'https://roadtocareer.net/logo.png',
 'https://roadtocareer.net/qa-talent',
 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
-'Road to Career',
+'Road to SDET',
 'en',
 'BD',
 'Dhaka',

@@ -1816,13 +1816,13 @@ exports.sendContactEmail = async (req, res) => {
     const emailSubject = subject;
     const emailBody = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #1e40af;">Message from Road to Career QA Talent Portal</h2>
+                <h2 style="color: #1e40af;">Message from Road to SDET QA Talent Portal</h2>
                 <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
                     <p style="white-space: pre-wrap; line-height: 1.6;">${body}</p>
                 </div>
                 <hr style="border: 1px solid #e2e8f0; margin: 20px 0;">
                 <p style="color: #64748b; font-size: 0.9rem;">
-                    This email was sent from the Road to Career QA Talent Discovery platform. 
+                    This email was sent from the Road to SDET QA Talent Discovery platform.
                     A recruiter or HR professional is interested in connecting with you.
                 </p>
                 <p style="color: #64748b; font-size: 0.9rem;">

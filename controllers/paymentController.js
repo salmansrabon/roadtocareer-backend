@@ -67,10 +67,20 @@ exports.addPayment = async (req, res) => {
         await student.update({ due: remainingBalance >= 0 ? remainingBalance : 0 });
 
         // 🔹 Send Email Notification
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
         sendEmail(
             student.email,
             "Road to SDET Payment Confirmation",
-            `Dear ${student.student_name},\n\nYour payment of ${paidAmount} Tk has been received successfully for the month of ${month}.\n\nThank you for your payment.\n\nRegards,\nRoad to SDET Team`
+            `Dear ${student.student_name},
+
+Your payment of ${paidAmount} Tk has been received successfully for the month of ${month}.
+
+Thank you for your payment.
+
+You can log in to the student portal (${frontendUrl}/dashboard/student) anytime to download this payment receipt as a PDF.
+
+Regards,
+Road to SDET Team`
         );
 
         return res.status(201).json({

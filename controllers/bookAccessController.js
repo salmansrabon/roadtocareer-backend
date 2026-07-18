@@ -5,6 +5,55 @@ const BookTopic = require("../models/BookTopic");
 const BookTopicBatchAccess = require("../models/BookTopicBatchAccess");
 const BookTopicStudentAccess = require("../models/BookTopicStudentAccess");
 const Student = require("../models/Student");
+const User = require("../models/User");
+const { sendEmail } = require("../utils/emailHelper");
+
+// Emails every isEnrolled+isValid=true student across the unlocked batches, once per student
+// per action (deduped by email). Awaited by the request handler so the response can confirm
+// whether the notification actually went out; individual send failures are caught per-recipient
+// so one bad address never aborts the rest of the batch.
+const notifyBatchStudentsOfUnlockedTopics = async (courseIds, book) => {
+    try {
+        const students = await Student.findAll({
+            where: { CourseId: { [Op.in]: courseIds }, isEnrolled: true },
+            include: [{ model: User, attributes: ["isValid"] }],
+        });
+
+        const bookLink = `${process.env.FRONTEND_URL || "https://www.roadtocareer.net"}/book/${book.slug}`;
+        const subject = `New Topics Unlocked - ${book.title}`;
+        const body = `Hello,
+
+New topics have been unlocked for the ebook "${book.title}". You can access it here: ${bookLink}
+
+Please login to the portal and check.
+
+Regards,
+Team, Road to SDET`;
+
+        const seenEmails = new Set();
+        let sentCount = 0;
+        for (const student of students) {
+            if (!student.User || student.User.isValid !== 1) continue;
+            if (!student.email || seenEmails.has(student.email)) continue;
+            seenEmails.add(student.email);
+
+            try {
+                const sent = await sendEmail(student.email, subject, body);
+                if (sent) {
+                    sentCount++;
+                } else {
+                    console.warn(`[unlockTopics] sendEmail returned false for ${student.email}.`);
+                }
+            } catch (emailErr) {
+                console.error(`[unlockTopics] Failed sending topic-unlock notification to ${student.email}:`, emailErr);
+            }
+        }
+        return { success: true, sentCount };
+    } catch (error) {
+        console.error("[unlockTopics] Error notifying batch students of unlocked topics:", error);
+        return { success: false, sentCount: 0 };
+    }
+};
 
 // GET /api/books — authenticated
 exports.getPublishedBooks = async (req, res) => {
@@ -204,7 +253,28 @@ exports.unlockTopics = async (req, res) => {
             }
         }
 
-        res.status(200).json({ message: `Access updated for ${topicIds.length} topic(s)` });
+        // Resolve the book via the first topic's chapter (all topics unlocked from this page
+        // belong to the same book) and email the affected batches' students — awaited here
+        // (not fire-and-forget) so the response can honestly confirm whether the email went out.
+        let emailNotification = { success: false, sentCount: 0 };
+        try {
+            const topicWithBook = await BookTopic.findOne({
+                where: { id: topicIds[0] },
+                attributes: ["id"],
+                include: [{ model: BookChapter, attributes: ["id"], include: [{ model: Book, attributes: ["title", "slug"] }] }],
+            });
+            const book = topicWithBook?.BookChapter?.Book;
+            if (book) {
+                emailNotification = await notifyBatchStudentsOfUnlockedTopics(courseIds, book);
+            }
+        } catch (notifyErr) {
+            console.error("[unlockTopics] Error resolving book for student notification:", notifyErr);
+        }
+
+        res.status(200).json({
+            message: `Access updated for ${topicIds.length} topic(s)`,
+            emailNotification,
+        });
     } catch (error) {
         console.error("Error unlocking topics:", error);
         res.status(500).json({ message: "Internal server error" });

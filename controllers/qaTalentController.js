@@ -21,12 +21,7 @@ exports.aiSearchQATalent = async (req, res) => {
     const systemPrompt = `You are an intelligent QA talent search assistant. Your goal is to find the BEST matching candidates even when exact skills aren't available. Always return relevant results by using fallback skills and related technologies.
 
 CRITICAL "BEST" CANDIDATE DETECTION:
-When users ask for "best", "top", "elite", "premium", "highest quality", "most qualified", "star", "excellent", "high scorer", "highest scorer", "top scorer", or similar superlatives, set "findBest": true. This triggers a special ranking algorithm that prioritizes:
-1. VERIFIED students (get_certificate = true) - HIGHEST priority
-2. ISTQB certified professionals - HIGH priority  
-3. Students with the most technical skills - MEDIUM priority
-4. Higher experience levels - MEDIUM priority
-5. Currently enrolled/active students - LOW priority
+When users ask for "best", "top", "elite", "premium", "highest quality", "most qualified", "star", "excellent", or similar superlatives, set "findBest": true. There is no scoring/ranking algorithm — matching candidates are simply returned ordered by most recently updated profile (freshest data first), limited to the requested count (or 1 if no count is given).
 
 Database Schema:
 - students table with fields: student_name, email, university, batch_no, passingYear, company, designation, profession, lookingForJob (enum: 'Yes'/'No'), isISTQBCertified (enum: 'Yes'/'No'), certificate (URL string - when present, student is "verified")
@@ -324,327 +319,6 @@ Response: {"lookingForJob": "Yes"}`;
       }
     }
 
-    // Handle "find best" candidates with special ranking algorithm
-    if (searchParams.findBest) {
-      // Build where clause for skill filtering if skills are specified
-      let bestWhereClause = {};
-      let bestOrConditions = [];
-
-      // If skills are specified, filter by them first
-      if (searchParams.skills) {
-        const skillsArray = searchParams.skills.split(",").map(s => s.trim()).filter(Boolean);
-        if (skillsArray.length > 0) {
-          skillsArray.forEach(skill => {
-            bestOrConditions.push(
-              Sequelize.where(
-                Sequelize.literal(`JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`),
-                { [Op.ne]: null }
-              )
-            );
-          });
-        }
-      }
-
-      // Add fallback skills if provided
-      if (searchParams.fallbackSkills) {
-        const fallbackArray = searchParams.fallbackSkills.split(",").map(s => s.trim()).filter(Boolean);
-        if (fallbackArray.length > 0) {
-          fallbackArray.forEach(skill => {
-            bestOrConditions.push(
-              Sequelize.where(
-                Sequelize.literal(`JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`),
-                { [Op.ne]: null }
-              )
-            );
-          });
-        }
-      }
-
-      if (bestOrConditions.length > 0) {
-        bestWhereClause[Op.or] = bestOrConditions;
-      }
-
-      // Fetch all students for ranking (limit to reasonable number for performance)
-      const allStudents = await Student.findAll({
-        where: bestWhereClause,
-        attributes: [
-          "StudentId",
-          "salutation",
-          "student_name",
-          "email",
-          "mobile",
-          "university",
-          "batch_no",
-          "courseTitle",
-          "package",
-          "profession",
-          "company",
-          "designation",
-          "experience",
-          "employment",
-          "skill",
-          "lookingForJob",
-          "isISTQBCertified",
-          "knowMe",
-          "remark",
-          "due",
-          "isEnrolled",
-          "photo",
-          "certificate",
-          "get_certificate",
-          "passingYear",
-          "linkedin",
-          "github",
-          "isMobilePublic",
-          "isEmailPublic",
-          "isLinkedInPublic",
-          "isGithubPublic",
-          "createdAt",
-        ],
-        include: [
-          {
-            model: Course,
-            attributes: ["courseId", "course_title"],
-            required: false,
-          },
-        ],
-        limit: 500, // Fetch more students for ranking
-      });
-
-      // Calculate scores for each student
-      // If experience range was requested, filter students first to that range
-      let candidatesForScoring = allStudents;
-      if (searchParams.experience || searchParams.maxExperience) {
-        const minExp = searchParams.experience
-          ? parseFloat(searchParams.experience)
-          : null;
-        const maxExp = searchParams.maxExperience
-          ? parseFloat(searchParams.maxExperience)
-          : null;
-        candidatesForScoring = allStudents.filter((s) => {
-          try {
-            const sd = s.toJSON();
-            const emp =
-              sd.employment && sd.employment.totalExperience
-                ? parseFloat(sd.employment.totalExperience)
-                : 0;
-            if (minExp !== null && maxExp !== null) {
-              return emp >= minExp && emp < maxExp + 1;
-            } else if (minExp !== null) {
-              return emp >= minExp;
-            } else if (maxExp !== null) {
-              return emp < maxExp + 1;
-            }
-            return true;
-          } catch (e) {
-            return false;
-          }
-        });
-      }
-
-      const scoredStudents = candidatesForScoring.map((student) => {
-        let score = 0;
-        const studentData = student.toJSON();
-
-        // VERIFIED status - HIGHEST priority (+50 points)
-        // Only treat as verified when `get_certificate` is strictly true (or numeric 1)
-        if (
-          studentData.get_certificate === true ||
-          studentData.get_certificate === 1
-        ) {
-          score += 50;
-        }
-
-        // ISTQB certification - HIGH priority (+30 points)
-        if (studentData.isISTQBCertified === "Yes") {
-          score += 20;
-        }
-
-        // Number of technical skills - MEDIUM priority (+1 point per skill, max 20)
-        if (
-          studentData.skill &&
-          typeof studentData.skill === "object" &&
-          studentData.skill.technical_skill
-        ) {
-          let skillCount = 0;
-          if (Array.isArray(studentData.skill.technical_skill)) {
-            skillCount = studentData.skill.technical_skill.length;
-          } else if (typeof studentData.skill.technical_skill === "string") {
-            skillCount = studentData.skill.technical_skill.split(",").length;
-          }
-          score += Math.min(skillCount, 20); // Cap at 20 points
-        }
-
-        // Experience level - MEDIUM priority (+1 point per year, max 10)
-        if (
-          studentData.employment &&
-          typeof studentData.employment === "object" &&
-          studentData.employment.totalExperience
-        ) {
-          const experience =
-            parseFloat(studentData.employment.totalExperience) || 0;
-          score += Math.min(Math.floor(experience), 5); // Cap at 5 points
-        }
-
-        // Currently enrolled - LOW priority (+5 points)
-        if (studentData.isEnrolled === true || studentData.isEnrolled === 1) {
-          score += 5;
-        }
-
-        return {
-          ...studentData,
-          qualityScore: score,
-        };
-      });
-
-      // Sort by quality score (descending) and return top N (respect requestedCount if provided)
-      // Show all if requested, otherwise default to 15
-      const maxReturn = showAllResults 
-        ? scoredStudents.length // Return all scored students
-        : (requestedCount && requestedCount > 0 ? requestedCount : 15);
-      const topStudents = scoredStudents
-        .sort((a, b) => b.qualityScore - a.qualityScore)
-        .slice(0, maxReturn);
-
-      // If no results found with specific skills, try fallback
-      if (topStudents.length === 0 && (searchParams.skills || searchParams.fallbackSkills)) {
-        // Fetch all students (no skill filter)
-        const fallbackStudents = await Student.findAll({
-          attributes: [
-            "StudentId", "salutation", "student_name", "email", "mobile", "university",
-            "batch_no", "courseTitle", "package", "profession", "company", "designation",
-            "experience", "employment", "skill", "lookingForJob", "isISTQBCertified",
-            "knowMe", "remark", "due", "isEnrolled", "photo", "certificate",
-            "get_certificate", "passingYear", "linkedin", "github", "isMobilePublic",
-            "isEmailPublic", "isLinkedInPublic", "isGithubPublic", "createdAt",
-          ],
-          include: [{ model: Course, attributes: ["courseId", "course_title"], required: false }],
-          limit: 500,
-        });
-
-        // Apply experience filter if needed
-        let fallbackCandidates = fallbackStudents;
-        if (searchParams.experience || searchParams.maxExperience) {
-          const minExp = searchParams.experience ? parseFloat(searchParams.experience) : null;
-          const maxExp = searchParams.maxExperience ? parseFloat(searchParams.maxExperience) : null;
-          fallbackCandidates = fallbackStudents.filter((s) => {
-            try {
-              const sd = s.toJSON();
-              const emp = sd.employment?.totalExperience ? parseFloat(sd.employment.totalExperience) : 0;
-              if (minExp !== null && maxExp !== null) return emp >= minExp && emp < maxExp + 1;
-              if (minExp !== null) return emp >= minExp;
-              if (maxExp !== null) return emp < maxExp + 1;
-              return true;
-            } catch (e) {
-              return false;
-            }
-          });
-        }
-
-        // Score and sort
-        const fallbackScored = fallbackCandidates.map(student => {
-          let score = 0;
-          const studentData = student.toJSON();
-          
-          if (studentData.get_certificate === true || studentData.get_certificate === 1) score += 50;
-          if (studentData.isISTQBCertified === "Yes") score += 20;
-          
-          if (studentData.skill?.technical_skill) {
-            const skillCount = Array.isArray(studentData.skill.technical_skill)
-              ? studentData.skill.technical_skill.length
-              : studentData.skill.technical_skill.split(",").length;
-            score += Math.min(skillCount, 20);
-          }
-          
-          if (studentData.employment?.totalExperience) {
-            const experience = parseFloat(studentData.employment.totalExperience) || 0;
-            score += Math.min(Math.floor(experience), 5);
-          }
-          
-          if (studentData.isEnrolled === true || studentData.isEnrolled === 1) score += 5;
-          
-          return { ...studentData, qualityScore: score };
-        });
-
-        const fallbackTop = fallbackScored
-          .sort((a, b) => b.qualityScore - a.qualityScore)
-          .slice(0, maxReturn);
-
-        // ✅ Filter private data based on privacy settings before sending to frontend
-        const filteredFallbackTop = fallbackTop.map(studentData => {
-          // ✅ Respect privacy settings - only include private fields if they are marked as public
-          if (!studentData.isEmailPublic) {
-            delete studentData.email;
-          }
-          if (!studentData.isMobilePublic) {
-            delete studentData.mobile;
-          }
-          if (!studentData.isLinkedInPublic) {
-            delete studentData.linkedin;
-          }
-          if (!studentData.isGithubPublic) {
-            delete studentData.github;
-          }
-          
-          return studentData;
-        });
-
-        return res.status(200).json({
-          totalStudents: filteredFallbackTop.length,
-          students: filteredFallbackTop,
-          searchParams,
-          originalQuery: query,
-          isBestSearch: true,
-          isFallbackSearch: true,
-          requestedCount: requestedCount || null,
-          aiMessage: "Sorry, I didn't find anyone as per your request but following candidate might be potential as per your request.",
-          rankingCriteria: {
-            verified: "50 points",
-            istqbCertified: "20 points",
-            skillsCount: "1 point per skill (max 20)",
-            experienceYears: "1 point per year (max 5)",
-            enrolled: "5 points",
-          },
-        });
-      }
-
-      // ✅ Filter private data based on privacy settings before sending to frontend
-      const filteredTopStudents = topStudents.map(studentData => {
-        // ✅ Respect privacy settings - only include private fields if they are marked as public
-        if (!studentData.isEmailPublic) {
-          delete studentData.email;
-        }
-        if (!studentData.isMobilePublic) {
-          delete studentData.mobile;
-        }
-        if (!studentData.isLinkedInPublic) {
-          delete studentData.linkedin;
-        }
-        if (!studentData.isGithubPublic) {
-          delete studentData.github;
-        }
-        
-        return studentData;
-      });
-
-      return res.status(200).json({
-        totalStudents: filteredTopStudents.length,
-        students: filteredTopStudents,
-        searchParams,
-        originalQuery: query,
-        isBestSearch: true,
-        requestedCount: requestedCount || null,
-        aiMessage: filteredTopStudents.length > 0 ? "Here are the best matching candidates based on your requirements." : "No matching candidates found.",
-        rankingCriteria: {
-          verified: "50 points",
-          istqbCertified: "20 points",
-          skillsCount: "1 point per skill (max 20)",
-          experienceYears: "1 point per year (max 5)",
-          enrolled: "5 points",
-        },
-      });
-    }
-
     // Build SQL where clause based on AI-extracted parameters
     let whereClause = {};
     let orConditions = [];
@@ -846,6 +520,7 @@ Response: {"lookingForJob": "Yes"}`;
         "isLinkedInPublic",
         "isGithubPublic",
         "createdAt",
+        "updatedAt",
       ],
       include: [
         {
@@ -854,10 +529,7 @@ Response: {"lookingForJob": "Yes"}`;
           required: false,
         },
       ],
-      order: [
-        ["get_certificate", "DESC"],
-        ["createdAt", "DESC"],
-      ],
+      order: [["updatedAt", "DESC"]],
       limit: queryLimit, // Limit AI search results (respect requested count)
     });
 
@@ -866,7 +538,8 @@ Response: {"lookingForJob": "Yes"}`;
       students.length === 0 &&
       (searchParams.skills || searchParams.fallbackSkills)
     ) {
-      // Fetch all students for ranking with skill relevance
+      // No exact skill match — fetch other candidates (most recently updated first)
+      // so the recruiter still sees potential profiles instead of an empty result.
       const allStudents = await Student.findAll({
         attributes: [
           "StudentId",
@@ -901,6 +574,7 @@ Response: {"lookingForJob": "Yes"}`;
           "isLinkedInPublic",
           "isGithubPublic",
           "createdAt",
+          "updatedAt",
         ],
         include: [
           {
@@ -909,11 +583,12 @@ Response: {"lookingForJob": "Yes"}`;
             required: false,
           },
         ],
-        limit: 500, // Fetch more students for ranking
+        order: [["updatedAt", "DESC"]],
+        limit: 500,
       });
 
       // If experience range was requested, filter students first to that range
-      let candidatesForScoring = allStudents;
+      let candidates = allStudents;
       if (searchParams.experience || searchParams.maxExperience) {
         const minExp = searchParams.experience
           ? parseFloat(searchParams.experience)
@@ -921,7 +596,7 @@ Response: {"lookingForJob": "Yes"}`;
         const maxExp = searchParams.maxExperience
           ? parseFloat(searchParams.maxExperience)
           : null;
-        candidatesForScoring = allStudents.filter((s) => {
+        candidates = allStudents.filter((s) => {
           try {
             const sd = s.toJSON();
             const emp =
@@ -942,114 +617,13 @@ Response: {"lookingForJob": "Yes"}`;
         });
       }
 
-      // Calculate scores for each student with skill relevance
-      const scoredStudents = candidatesForScoring.map((student) => {
-        let score = 0;
-        let skillRelevance = 0;
-        const studentData = student.toJSON();
-
-        // VERIFIED status - HIGHEST priority (+50 points)
-        // Only treat as verified when `get_certificate` is strictly true (or numeric 1)
-        if (
-          studentData.get_certificate === true ||
-          studentData.get_certificate === 1
-        ) {
-          score += 50;
-        }
-
-        // ISTQB certification - HIGH priority (+30 points)
-        if (studentData.isISTQBCertified === "Yes") {
-          score += 20;
-        }
-
-        // Skill relevance - check if student has requested or fallback skills
-        if (
-          studentData.skill &&
-          typeof studentData.skill === "object" &&
-          studentData.skill.technical_skill
-        ) {
-          const studentSkills = Array.isArray(studentData.skill.technical_skill)
-            ? studentData.skill.technical_skill
-            : studentData.skill.technical_skill.split(",").map((s) => s.trim());
-
-          const requestedSkills = searchParams.skills
-            ? searchParams.skills.split(",").map((s) => s.trim())
-            : [];
-          const fallbackSkills = searchParams.fallbackSkills
-            ? searchParams.fallbackSkills.split(",").map((s) => s.trim())
-            : [];
-
-          // Check for exact skill matches (higher weight)
-          requestedSkills.forEach((skill) => {
-            if (
-              studentSkills.some((s) =>
-                s.toLowerCase().includes(skill.toLowerCase())
-              )
-            ) {
-              skillRelevance += 5; // Exact match gets 5 points
-            }
-          });
-
-          // Check for fallback skill matches (lower weight)
-          fallbackSkills.forEach((skill) => {
-            if (
-              studentSkills.some((s) =>
-                s.toLowerCase().includes(skill.toLowerCase())
-              )
-            ) {
-              skillRelevance += 5; // Fallback match gets 5 points
-            }
-          });
-
-          score += skillRelevance;
-        }
-
-        // Number of technical skills - MEDIUM priority (+1 point per skill, max 20)
-        if (
-          studentData.skill &&
-          typeof studentData.skill === "object" &&
-          studentData.skill.technical_skill
-        ) {
-          let skillCount = 0;
-          if (Array.isArray(studentData.skill.technical_skill)) {
-            skillCount = studentData.skill.technical_skill.length;
-          } else if (typeof studentData.skill.technical_skill === "string") {
-            skillCount = studentData.skill.technical_skill.split(",").length;
-          }
-          score += Math.min(skillCount, 20); // Cap at 20 points
-        }
-
-        // Experience level - MEDIUM priority (+1 point per year, max 10)
-        if (
-          studentData.employment &&
-          typeof studentData.employment === "object" &&
-          studentData.employment.totalExperience
-        ) {
-          const experience =
-            parseFloat(studentData.employment.totalExperience) || 0;
-          score += Math.min(Math.floor(experience), 10); // Cap at 10 points
-        }
-
-        // Currently enrolled - LOW priority (+5 points)
-        if (studentData.isEnrolled === true || studentData.isEnrolled === 1) {
-          score += 5;
-        }
-
-        return {
-          ...studentData,
-          qualityScore: score,
-          skillRelevance: skillRelevance,
-        };
-      });
-
-      // Sort by quality score (descending) and return top N best matches (respect requestedCount)
       // Show all if requested, otherwise default to 15
       const fallbackMax = showAllResults
-        ? scoredStudents.length // Return all scored students
+        ? candidates.length
         : (requestedCount && requestedCount > 0 ? requestedCount : 15);
-      const bestMatchingStudents = scoredStudents
-        .sort((a, b) => b.qualityScore - a.qualityScore)
-        .slice(0, fallbackMax);
+      const bestMatchingStudents = candidates
+        .slice(0, fallbackMax)
+        .map((student) => student.toJSON());
 
       // ✅ Filter private data based on privacy settings before sending to frontend
       const filteredBestMatching = bestMatchingStudents.map(studentData => {
@@ -1343,6 +917,7 @@ exports.searchQATalent = async (req, res) => {
         "isLinkedInPublic",
         "isGithubPublic",
         "createdAt",
+        "updatedAt",
       ],
       include: [
         {
@@ -1351,10 +926,7 @@ exports.searchQATalent = async (req, res) => {
           required: false,
         },
       ],
-      order: [
-        ["get_certificate", "DESC"],
-        ["createdAt", "DESC"],
-      ],
+      order: [["updatedAt", "DESC"]],
       offset,
       limit: limitNumber,
     });

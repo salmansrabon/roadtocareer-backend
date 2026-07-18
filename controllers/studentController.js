@@ -750,9 +750,10 @@ exports.getQaTalent = async (req, res) => {
         "isLinkedInPublic",
         "isGithubPublic",
         "createdAt",
+        "updatedAt",
       ],
       include: includeClause,
-      order: [[Sequelize.literal("`Student`.`createdAt`"), "DESC"]],
+      order: [[Sequelize.literal("`Student`.`updatedAt`"), "DESC"]],
       offset,
       limit: limitNumber,
     });

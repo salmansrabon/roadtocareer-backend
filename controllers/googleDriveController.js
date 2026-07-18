@@ -2,7 +2,10 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const { listFolderContents: listFolderHelper, uploadFileToFolder } = require("../utils/googleDriveHelper");
+const { sendEmail } = require("../utils/emailHelper");
 const Gallery = require("../models/Gallery");
+const Student = require("../models/Student");
+const User = require("../models/User");
 
 const videoUploadDir = path.join(__dirname, "../uploads/tmp-videos");
 if (!fs.existsSync(videoUploadDir)) {
@@ -179,6 +182,43 @@ exports.deleteGoogleDriveLink = async (req, res) => {
     }
 };
 
+// ✅ Best-effort, non-blocking: email every isValid=true student in the batch that a new class video is up.
+// Never awaited by the request handler — a slow/failing email run must never delay the admin's upload response.
+const notifyBatchStudentsOfNewVideo = async (courseId) => {
+    try {
+        const students = await Student.findAll({
+            where: { CourseId: courseId },
+            include: [{ model: User, attributes: ["isValid"] }],
+        });
+
+        const subject = "New Class Recording Uploaded";
+        const body = `Hello,
+
+Today's class video is being uploaded. Please login to the student portal and check on recorded video menu page.
+
+If you see the video is still processing, please try again after 10-15 minutes until the video is fully rendered.
+
+Regards,
+Team, Road to SDET`;
+
+        for (const student of students) {
+            if (!student.User || student.User.isValid !== 1) continue;
+            if (!student.email) continue;
+
+            try {
+                const sent = await sendEmail(student.email, subject, body);
+                if (!sent) {
+                    console.warn(`[uploadVideo] sendEmail returned false for ${student.email}.`);
+                }
+            } catch (emailErr) {
+                console.error(`[uploadVideo] Failed sending new-video notification to ${student.email}:`, emailErr);
+            }
+        }
+    } catch (error) {
+        console.error("[uploadVideo] Error notifying batch students of new video:", error);
+    }
+};
+
 exports.uploadVideo = [
     (req, res, next) => {
         videoUpload.single("video")(req, res, (err) => {
@@ -194,7 +234,7 @@ exports.uploadVideo = [
         });
     },
     async (req, res) => {
-        const { folderId } = req.body;
+        const { folderId, courseId } = req.body;
         const file = req.file;
 
         if (!file) {
@@ -210,7 +250,13 @@ exports.uploadVideo = [
             const result = await uploadFileToFolder(folderId, file.path, file.originalname, file.mimetype);
 
             if (result.success) {
-                return res.status(201).json({ success: true, file: result.file });
+                res.status(201).json({ success: true, file: result.file });
+                if (courseId) {
+                    notifyBatchStudentsOfNewVideo(courseId).catch((err) => {
+                        console.error("[uploadVideo] Unexpected error notifying batch students:", err);
+                    });
+                }
+                return;
             }
             return res.status(500).json({ success: false, message: result.error });
         } catch (error) {

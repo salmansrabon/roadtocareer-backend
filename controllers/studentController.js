@@ -555,6 +555,84 @@ exports.getAllStudents = async (req, res) => {
   }
 };
 
+exports.getAlumniList = async (req, res) => {
+  try {
+    const {
+      studentName,
+      email,
+      batch_no,
+      university,
+      companyName,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const offset = (pageNumber - 1) * limitNumber;
+
+    const whereClause = { isEnrolled: true };
+    if (studentName)
+      whereClause.student_name = { [Op.like]: `%${studentName}%` };
+    if (email) whereClause.email = { [Op.like]: `%${email}%` };
+    if (batch_no) whereClause.batch_no = batch_no;
+    if (university) whereClause.university = { [Op.like]: `%${university}%` };
+    if (companyName) whereClause.company = { [Op.like]: `%${companyName}%` };
+
+    const studentAttributes = [
+      "StudentId",
+      "salutation",
+      "student_name",
+      "batch_no",
+      "email",
+      "university",
+      "company",
+      "designation",
+      "linkedin",
+      "isEmailPublic",
+      "isLinkedInPublic",
+    ];
+
+    const total = await Student.count({ where: whereClause });
+
+    const studentsRaw = await Student.findAll({
+      where: whereClause,
+      attributes: studentAttributes,
+      order: [["createdAt", "DESC"]],
+      offset,
+      limit: limitNumber,
+    });
+
+    // ✅ Respect privacy settings - only include email/LinkedIn if marked public
+    const students = studentsRaw.map((student) => {
+      const studentData = student.toJSON();
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
+      }
+      if (!studentData.isLinkedInPublic) {
+        delete studentData.linkedin;
+      }
+      delete studentData.isEmailPublic;
+      delete studentData.isLinkedInPublic;
+      return studentData;
+    });
+
+    return res.status(200).json({
+      success: true,
+      page: pageNumber,
+      limit: limitNumber,
+      total,
+      totalPages: Math.ceil(total / limitNumber),
+      data: students,
+    });
+  } catch (error) {
+    console.error("Error fetching alumni list:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
+  }
+};
+
 exports.getQaTalent = async (req, res) => {
   try {
     const {
@@ -1508,10 +1586,17 @@ exports.getAllCompanies = async (req, res) => {
 
     const replacements = {};
 
-    // If search is passed → filter by it and force limit to 10
+    // If search is passed → filter by it, ranking prefix matches (best match) above
+    // mid-string matches so the top suggestion converges as more letters are typed
     if (search) {
-      query += ` AND s.company LIKE :search ORDER BY s.company ASC LIMIT 10`;
+      query += `
+        AND s.company LIKE :search
+        ORDER BY CASE WHEN s.company LIKE :prefixSearch THEN 0 ELSE 1 END, s.company ASC
+        LIMIT :searchLimit
+      `;
       replacements.search = `%${search}%`;
+      replacements.prefixSearch = `${search}%`;
+      replacements.searchLimit = parseInt(limit) || 10;
     } else if (limit) {
       query += ` ORDER BY s.company ASC LIMIT :limit`;
       replacements.limit = parseInt(limit);
@@ -1529,6 +1614,50 @@ exports.getAllCompanies = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching company list:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+};
+
+exports.getAllUniversities = async (req, res) => {
+  const { search = "", limit } = req.query;
+
+  try {
+    let query = `
+      SELECT DISTINCT s.university
+      FROM students s
+      WHERE s.university IS NOT NULL AND TRIM(s.university) != ''
+    `;
+
+    const replacements = {};
+
+    // If search is passed → filter by it, ranking prefix matches (best match) above
+    // mid-string matches so the top suggestion converges as more letters are typed
+    if (search) {
+      query += `
+        AND s.university LIKE :search
+        ORDER BY CASE WHEN s.university LIKE :prefixSearch THEN 0 ELSE 1 END, s.university ASC
+        LIMIT :searchLimit
+      `;
+      replacements.search = `%${search}%`;
+      replacements.prefixSearch = `${search}%`;
+      replacements.searchLimit = parseInt(limit) || 10;
+    } else if (limit) {
+      query += ` ORDER BY s.university ASC LIMIT :limit`;
+      replacements.limit = parseInt(limit);
+    } else {
+      query += ` ORDER BY s.university ASC`; // all results, ordered
+    }
+
+    const [results] = await sequelize.query(query, { replacements });
+    const universities = results.map((row) => row.university);
+
+    res.status(200).json({
+      success: true,
+      count: universities.length,
+      data: universities,
+    });
+  } catch (error) {
+    console.error("Error fetching university list:", error);
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

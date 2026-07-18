@@ -1,11 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const { createResume, updateResume, getAllResumes, deleteResume, getAllStudentResumes, getAllResumeEvaluations, deleteResumeEvaluation } = require("../controllers/resumeController");
-const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
+const resumeController = require("../controllers/resumeController");
+const { getAllResumeEvaluations, deleteResumeEvaluation } = resumeController;
+const { authenticateUser } = require("../middlewares/authMiddleware");
 
 const multer = require("multer");
 const path = require("path");
-const resumeController = require("../controllers/resumeController");
 
 const upload = multer({
   dest: path.join(__dirname, "..", "uploads/"),
@@ -20,11 +20,6 @@ const upload = multer({
 });
 
 
-router.post("/create", authenticateUser, createResume);
-router.put("/update/:studentId", updateResume);
-router.get("/list", getAllResumes);
-router.delete("/delete/:studentId", deleteResume);
-router.get("/students", authenticateUser, getAllStudentResumes); //list all the students resume
 router.post("/evaluate", upload.single("resume"), resumeController.evaluateResume);
 router.get("/evaluations", authenticateUser, getAllResumeEvaluations);
 router.delete("/evaluations/:id", authenticateUser, deleteResumeEvaluation);

@@ -1,5 +1,5 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getCourseProgress, deleteAttendance, sendContactEmail, saveCertificate, getQaTalent, getStudentsWithAIInterviews  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getAlumniList, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getAllUniversities, getCourseProgress, deleteAttendance, sendContactEmail, saveCertificate, getQaTalent, getStudentsWithAIInterviews  } = require("../controllers/studentController");
 const { searchQATalent, aiSearchQATalent } = require("../controllers/qaTalentController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
@@ -8,6 +8,7 @@ const router = express.Router();
 // ✅ Student Signup Route
 router.post("/signup", studentSignup);
 router.get("/list", authenticateUser, requireAdmin, getAllStudents);
+router.get("/alumni", authenticateUser, getAlumniList);
 router.get("/public-list", getQaTalent);
 router.get("/search-talent", searchQATalent);
 router.post("/ai-search", aiSearchQATalent);
@@ -21,6 +22,7 @@ router.get("/list/attendance", authenticateUser, requireAdmin, getAllAttendance)
 router.delete("/attendance/:studentId/:index", authenticateUser, requireAdmin, deleteAttendance);
 router.post("/migrate/:studentId", authenticateUser, requireAdmin, migrateStudent);
 router.get("/companies/list", getAllCompanies);
+router.get("/universities/list", getAllUniversities);
 router.get("/course-progress/:studentId", authenticateUser, getCourseProgress);
 router.post("/save-certificate/:studentId", authenticateUser, saveCertificate);
 router.get("/ai-interviews/list", authenticateUser, requireAdmin, getStudentsWithAIInterviews);

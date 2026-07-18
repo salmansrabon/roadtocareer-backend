@@ -91,6 +91,10 @@ const Student = sequelize.define("Student", {
         type: DataTypes.JSON,
         allowNull: true
     },
+    trainingCertifications: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     lookingForJob: {
         type: DataTypes.ENUM('Yes', 'No'),
         defaultValue: 'No'

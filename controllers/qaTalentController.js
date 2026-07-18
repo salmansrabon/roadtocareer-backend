@@ -627,20 +627,11 @@ Response: {"lookingForJob": "Yes"}`;
 
       // ✅ Filter private data based on privacy settings before sending to frontend
       const filteredBestMatching = bestMatchingStudents.map(studentData => {
-        // ✅ Respect privacy settings - only include private fields if they are marked as public
-        if (!studentData.isEmailPublic) {
-          delete studentData.email;
-        }
+        // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
         if (!studentData.isMobilePublic) {
           delete studentData.mobile;
         }
-        if (!studentData.isLinkedInPublic) {
-          delete studentData.linkedin;
-        }
-        if (!studentData.isGithubPublic) {
-          delete studentData.github;
-        }
-        
+
         return studentData;
       });
 
@@ -659,21 +650,12 @@ Response: {"lookingForJob": "Yes"}`;
     // ✅ Filter private data based on privacy settings before sending to frontend
     const filteredStudents = students.map(student => {
       const studentData = student.toJSON();
-      
-      // ✅ Respect privacy settings - only include private fields if they are marked as public
-      if (!studentData.isEmailPublic) {
-        delete studentData.email;
-      }
+
+      // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
       }
-      if (!studentData.isLinkedInPublic) {
-        delete studentData.linkedin;
-      }
-      if (!studentData.isGithubPublic) {
-        delete studentData.github;
-      }
-      
+
       return studentData;
     });
 
@@ -934,21 +916,12 @@ exports.searchQATalent = async (req, res) => {
     // ✅ Filter private data based on privacy settings before sending to frontend
     const students = studentsRaw.map(student => {
       const studentData = student.toJSON();
-      
-      // ✅ Respect privacy settings - only include private fields if they are marked as public
-      if (!studentData.isEmailPublic) {
-        delete studentData.email;
-      }
+
+      // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
       }
-      if (!studentData.isLinkedInPublic) {
-        delete studentData.linkedin;
-      }
-      if (!studentData.isGithubPublic) {
-        delete studentData.github;
-      }
-      
+
       return studentData;
     });
 

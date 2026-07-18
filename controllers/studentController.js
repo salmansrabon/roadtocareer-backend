@@ -603,15 +603,9 @@ exports.getAlumniList = async (req, res) => {
       limit: limitNumber,
     });
 
-    // ✅ Respect privacy settings - only include email/LinkedIn if marked public
+    // ✅ Email/LinkedIn are always public — no privacy filtering needed
     const students = studentsRaw.map((student) => {
       const studentData = student.toJSON();
-      if (!studentData.isEmailPublic) {
-        delete studentData.email;
-      }
-      if (!studentData.isLinkedInPublic) {
-        delete studentData.linkedin;
-      }
       delete studentData.isEmailPublic;
       delete studentData.isLinkedInPublic;
       return studentData;
@@ -758,24 +752,14 @@ exports.getQaTalent = async (req, res) => {
       limit: limitNumber,
     });
 
-    // ✅ Filter private data based on privacy settings before sending to frontend
+    // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
     const students = studentsRaw.map(student => {
       const studentData = student.toJSON();
-      
-      // ✅ Respect privacy settings - only include private fields if they are marked as public
-      if (!studentData.isEmailPublic) {
-        delete studentData.email;
-      }
+
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
       }
-      if (!studentData.isLinkedInPublic) {
-        delete studentData.linkedin;
-      }
-      if (!studentData.isGithubPublic) {
-        delete studentData.github;
-      }
-      
+
       return studentData;
     });
 
@@ -797,15 +781,18 @@ exports.getStudentById = async (req, res) => {
 
     // ✅ Manual optional authentication - check for token but don't require it
     let isAdmin = false;
+    let isOwner = false;
     const token = req.headers.authorization?.split(" ")[1];
     if (token) {
       try {
         const jwt = require("jsonwebtoken");
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         isAdmin = decoded && (decoded.role === "admin" || decoded.role === "teacher");
+        isOwner = decoded && decoded.username === studentId;
       } catch (err) {
         // Invalid token, treat as non-admin
         isAdmin = false;
+        isOwner = false;
       }
     }
 
@@ -834,6 +821,7 @@ exports.getStudentById = async (req, res) => {
         "education",
         "skill",
         "projects",
+        "trainingCertifications",
         "lookingForJob",
         "isISTQBCertified",
         "istqb_certificate",
@@ -906,21 +894,13 @@ exports.getStudentById = async (req, res) => {
     }
 
     const studentData = studentRaw.toJSON();
-    
-    // ✅ Apply privacy filters only if user is not admin
-    if (!isAdmin) {
-      // Respect privacy settings - only include private fields if they are marked as public
-      if (!studentData.isEmailPublic) {
-        delete studentData.email;
-      }
+
+    // ✅ Owners viewing their own profile and admins always see everything.
+    // Anyone else (e.g. a public portfolio visitor) only has mobile gated by
+    // privacy setting — email/linkedin/github are always public.
+    if (!isAdmin && !isOwner) {
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
-      }
-      if (!studentData.isLinkedInPublic) {
-        delete studentData.linkedin;
-      }
-      if (!studentData.isGithubPublic) {
-        delete studentData.github;
       }
     }
 
@@ -1012,6 +992,7 @@ exports.updateStudent = async (req, res) => {
       education: req.body.education,
       skill: req.body.skill,
       projects: req.body.projects,
+      trainingCertifications: req.body.trainingCertifications,
       lookingForJob: req.body.lookingForJob,
       isISTQBCertified: req.body.isISTQBCertified,
       istqb_certificate: req.body.istqb_certificate,
@@ -1024,9 +1005,10 @@ exports.updateStudent = async (req, res) => {
       linkedin: req.body.linkedin,
       github: req.body.github,
       isMobilePublic: req.body.isMobilePublic,
-      isEmailPublic: req.body.isEmailPublic,
-      isLinkedInPublic: req.body.isLinkedInPublic,
-      isGithubPublic: req.body.isGithubPublic,
+      // ✅ Email/LinkedIn/GitHub are always public now — no per-field toggle
+      isEmailPublic: true,
+      isLinkedInPublic: true,
+      isGithubPublic: true,
       aboutMe: req.body.aboutMe,
       get_certificate,
       previous_course_id,

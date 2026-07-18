@@ -1,5 +1,39 @@
-const { listFolderContents: listFolderHelper } = require("../utils/googleDriveHelper");
+const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
+const { listFolderContents: listFolderHelper, uploadFileToFolder } = require("../utils/googleDriveHelper");
 const Gallery = require("../models/Gallery");
+
+const videoUploadDir = path.join(__dirname, "../uploads/tmp-videos");
+if (!fs.existsSync(videoUploadDir)) {
+    fs.mkdirSync(videoUploadDir, { recursive: true });
+}
+
+const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
+const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
+
+const videoStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, videoUploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueName = `${Date.now()}-${file.originalname}`;
+        cb(null, uniqueName);
+    },
+});
+
+const videoUpload = multer({
+    storage: videoStorage,
+    limits: { fileSize: MAX_VIDEO_SIZE },
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const isVideoMime = (file.mimetype || "").startsWith("video/");
+        if (!isVideoMime || !ALLOWED_VIDEO_EXTENSIONS.includes(ext)) {
+            return cb(new Error("Only video files (mp4, mov, webm, mkv, avi) are allowed"), false);
+        }
+        cb(null, true);
+    },
+});
 
 exports.listFolderContents = async (req, res) => {
     const { parentId, sharedDriveId } = req.query;
@@ -144,6 +178,51 @@ exports.deleteGoogleDriveLink = async (req, res) => {
         });
     }
 };
+
+exports.uploadVideo = [
+    (req, res, next) => {
+        videoUpload.single("video")(req, res, (err) => {
+            if (err instanceof multer.MulterError) {
+                if (err.code === "LIMIT_FILE_SIZE") {
+                    return res.status(400).json({ success: false, message: "Video exceeds the 2GB size limit." });
+                }
+                return res.status(400).json({ success: false, message: err.message });
+            } else if (err) {
+                return res.status(400).json({ success: false, message: err.message });
+            }
+            next();
+        });
+    },
+    async (req, res) => {
+        const { folderId } = req.body;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({ success: false, message: "No video file uploaded." });
+        }
+
+        if (!folderId) {
+            fs.unlink(file.path, () => {});
+            return res.status(400).json({ success: false, message: "folderId is required." });
+        }
+
+        try {
+            const result = await uploadFileToFolder(folderId, file.path, file.originalname, file.mimetype);
+
+            if (result.success) {
+                return res.status(201).json({ success: true, file: result.file });
+            }
+            return res.status(500).json({ success: false, message: result.error });
+        } catch (error) {
+            console.error("Error uploading video to Drive:", error);
+            return res.status(500).json({ success: false, message: "Internal server error." });
+        } finally {
+            fs.unlink(file.path, (err) => {
+                if (err) console.error("Failed to delete temp video file:", err);
+            });
+        }
+    },
+];
 
 exports.reorderGalleryItems = async (req, res) => {
     try {

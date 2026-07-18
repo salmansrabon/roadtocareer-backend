@@ -148,6 +148,34 @@ const listFolderContents = async (parentFolderId, sharedDriveId) => {
     }
 };
 
+/**
+ * Upload a File into a Folder in a Shared Drive (streamed from local disk)
+ * @param {string} parentFolderId - The ID of the destination folder
+ * @param {string} filePath - Local disk path of the file to upload (e.g. a Multer temp file)
+ * @param {string} fileName - Name to give the file in Drive
+ * @param {string} mimeType - MIME type of the file
+ * @returns {Promise<Object>} - Uploaded file's id/name/mimeType/createdTime
+ */
+const uploadFileToFolder = async (parentFolderId, filePath, fileName, mimeType) => {
+    try {
+        const response = await drive.files.create({
+            requestBody: {
+                name: fileName,
+                parents: [parentFolderId],
+            },
+            media: {
+                mimeType,
+                body: fs.createReadStream(filePath),
+            },
+            supportsAllDrives: true,
+            fields: 'id, name, mimeType, createdTime',
+        });
 
+        return { success: true, file: response.data };
+    } catch (error) {
+        console.error("Error uploading file to Drive:", error);
+        return { success: false, error: error.message };
+    }
+};
 
-module.exports = { grantDriveAccess, removeDriveAccess, revokeDriveAccessByEmail, listFolderContents };
+module.exports = { grantDriveAccess, removeDriveAccess, revokeDriveAccessByEmail, listFolderContents, uploadFileToFolder };

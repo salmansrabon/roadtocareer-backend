@@ -149,6 +149,13 @@ function scoreJobSeekingAndCtfl(student) {
   return Math.min(score, 7);
 }
 
+// Bonus: Road to SDET course-completion certificate (distinct from ISTQB/CTFL
+// certification above). Not part of the ticket's 8 sections/100-point
+// structure — an extra 5 points on top, capped by the overall 100 ceiling.
+function scoreRoadToSdetCertificate(student) {
+  return student.get_certificate ? 5 : 0;
+}
+
 function calculateProfileScore(student) {
   const total =
     scoreBasicInformation(student) +
@@ -158,7 +165,8 @@ function calculateProfileScore(student) {
     scoreEmploymentHistory(student) +
     scoreAcademicInformation(student) +
     scoreTrainingAndCertification(student) +
-    scoreJobSeekingAndCtfl(student);
+    scoreJobSeekingAndCtfl(student) +
+    scoreRoadToSdetCertificate(student);
   return Math.max(0, Math.min(total, 100));
 }
 
@@ -174,4 +182,5 @@ module.exports = {
   scoreAcademicInformation,
   scoreTrainingAndCertification,
   scoreJobSeekingAndCtfl,
+  scoreRoadToSdetCertificate,
 };

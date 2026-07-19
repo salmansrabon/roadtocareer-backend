@@ -2,6 +2,7 @@ const cron = require("node-cron");
 const { Op, Sequelize } = require("sequelize");
 const Course = require("../models/Course");
 const { runAttendanceReminderJob } = require("./attendanceReminderJob");
+const { runExperienceRecalcJob } = require("./experienceRecalcJob");
 
 const CRON_DOW = {
   Sunday: 0,
@@ -14,6 +15,14 @@ const CRON_DOW = {
 };
 
 async function registerCronJobs() {
+  // 06:00 UTC == 12:00 Asia/Dhaka (process TZ pinned to UTC in server.js; Bangladesh has no DST).
+  // Registered before the attendance job's course lookup below so its own early return
+  // (no qualifying class_days) can never accidentally skip this unrelated job.
+  cron.schedule("0 6 1 * *", () => {
+    runExperienceRecalcJob();
+  });
+  console.log("🕐 [cron] experienceRecalcJob scheduled @ 06:00 UTC (12:00 Asia/Dhaka) on day 1 of each month.");
+
   const courses = await Course.findAll({
     where: {
       is_enabled: true,

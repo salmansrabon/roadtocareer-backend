@@ -908,7 +908,10 @@ exports.searchQATalent = async (req, res) => {
           required: false,
         },
       ],
-      order: [["updatedAt", "DESC"]],
+      order: [
+        ["profile_score", "DESC"],
+        ["updatedAt", "DESC"],
+      ],
       offset,
       limit: limitNumber,
     });

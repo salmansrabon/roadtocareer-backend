@@ -205,6 +205,11 @@ const Student = sequelize.define("Student", {
         type: DataTypes.BOOLEAN,
         defaultValue: false
     },
+    profile_score: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    },
 }, {
     tableName: "students",
     timestamps: true // ✅ Includes createdAt & updatedAt

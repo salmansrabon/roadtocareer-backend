@@ -16,6 +16,7 @@ const {
   parseAttendanceList,
   calculateAttendancePercentage,
 } = require("../utils/attendanceHelper");
+const { calculateProfileScore } = require("../utils/profileScoreHelper");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -145,8 +146,9 @@ exports.studentSignup = async (req, res) => {
       };
     }
 
-    // ✅ Insert Student Data into `students` Table
-    const newStudent = await Student.create({
+    // ✅ Build the new-student payload once so the initial profile score can
+    // be calculated from it and included in the single insert below.
+    const newStudentPayload = {
       salutation: salutation,
       StudentId: studentId,
       CourseId: courseId,
@@ -172,7 +174,11 @@ exports.studentSignup = async (req, res) => {
       opinion,
       google_access_id,
       isEnrolled: false, // Always FALSE initially
-    });
+    };
+    newStudentPayload.profile_score = calculateProfileScore(newStudentPayload);
+
+    // ✅ Insert Student Data into `students` Table (including the initial profile score)
+    const newStudent = await Student.create(newStudentPayload);
 
     // ✅ Generate Secure Password
     const password = generatePassword();
@@ -747,7 +753,10 @@ exports.getQaTalent = async (req, res) => {
         "updatedAt",
       ],
       include: includeClause,
-      order: [[Sequelize.literal("`Student`.`updatedAt`"), "DESC"]],
+      order: [
+        [Sequelize.literal("`Student`.`profile_score`"), "DESC"],
+        [Sequelize.literal("`Student`.`updatedAt`"), "DESC"],
+      ],
       offset,
       limit: limitNumber,
     });
@@ -844,6 +853,7 @@ exports.getStudentById = async (req, res) => {
         "createdAt",
         "get_certificate",
         "exam_answer",
+        "profile_score",
       ],
       include: [
         {
@@ -975,8 +985,10 @@ exports.updateStudent = async (req, res) => {
       console.log("Certificate disabled, clearing certificate URL");
     }
 
-    // ✅ Update Student Data
-    await student.update({
+    // ✅ Build the update payload once so the profile score can be
+    // recalculated from it before the single write below (avoids a second
+    // round-trip and keeps the save atomic).
+    const studentUpdatePayload = {
       salutation,
       student_name,
       batch_no,
@@ -1013,7 +1025,15 @@ exports.updateStudent = async (req, res) => {
       get_certificate,
       previous_course_id,
       previous_batch_no,
+    };
+
+    studentUpdatePayload.profile_score = calculateProfileScore({
+      ...student.toJSON(),
+      ...studentUpdatePayload,
     });
+
+    // ✅ Update Student Data (including the recalculated profile score) in one write
+    await student.update(studentUpdatePayload);
 
     // ✅ If email is updated, also update it in the User table
     if (email && user) {

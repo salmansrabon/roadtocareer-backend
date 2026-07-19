@@ -73,42 +73,56 @@ async function main() {
     console.log(`Found ${students.length} student(s) with employment history.`);
 
     let studentsChanged = 0;
+    let studentsFailed = 0;
     let recordsBackfilled = 0;
     let recordsSkipped = 0;
 
     for (const student of students) {
-        const employment = student.employment;
-        if (!employment || !Array.isArray(employment.company)) continue;
+        try {
+            const employment = student.employment;
+            if (!employment || !Array.isArray(employment.company)) continue;
 
-        let changed = false;
-        const before = employment.company;
-        const company = before.map((entry) => {
-            if (entry.fromMonth || entry.fromYear) return entry; // already has the new structure
+            let changed = false;
+            const before = employment.company;
+            const company = before.map((entry) => {
+                try {
+                    if (entry?.fromMonth || entry?.fromYear) return entry; // already has the new structure
 
-            const parsed = parseEmploymentDuration(entry.employmentDuration);
-            if (!parsed) {
-                recordsSkipped++;
-                return entry;
+                    const parsed = parseEmploymentDuration(entry?.employmentDuration);
+                    if (!parsed) {
+                        recordsSkipped++;
+                        return entry;
+                    }
+
+                    recordsBackfilled++;
+                    changed = true;
+                    return { ...entry, ...parsed };
+                } catch (recordErr) {
+                    // Never let one malformed record skip the rest of this student's employment history.
+                    recordsSkipped++;
+                    console.error(`[backfillEmploymentDates] ${student.StudentId}: skipping one unreadable employment record —`, recordErr.message);
+                    return entry;
+                }
+            });
+
+            if (!changed) continue;
+            studentsChanged++;
+
+            console.log(`\n${student.StudentId}:`);
+            console.log("  before:", JSON.stringify(before));
+            console.log("  after: ", JSON.stringify(company));
+
+            if (APPLY) {
+                await student.update({ employment: { ...employment, company } });
             }
-
-            recordsBackfilled++;
-            changed = true;
-            return { ...entry, ...parsed };
-        });
-
-        if (!changed) continue;
-        studentsChanged++;
-
-        console.log(`\n${student.StudentId}:`);
-        console.log("  before:", JSON.stringify(before));
-        console.log("  after: ", JSON.stringify(company));
-
-        if (APPLY) {
-            await student.update({ employment: { ...employment, company } });
+        } catch (studentErr) {
+            // Never let one student's failure abort the rest of the batch.
+            studentsFailed++;
+            console.error(`\n[backfillEmploymentDates] Failed to process ${student.StudentId}:`, studentErr.message);
         }
     }
 
-    console.log(`\n${APPLY ? "" : "[DRY RUN] "}Done. ${studentsChanged} student(s) ${APPLY ? "updated" : "would be updated"}, ${recordsBackfilled} record(s) ${APPLY ? "backfilled" : "would be backfilled"}, ${recordsSkipped} record(s) left as-is (unparseable or already migrated).`);
+    console.log(`\n${APPLY ? "" : "[DRY RUN] "}Done. ${studentsChanged} student(s) ${APPLY ? "updated" : "would be updated"}, ${recordsBackfilled} record(s) ${APPLY ? "backfilled" : "would be backfilled"}, ${recordsSkipped} record(s) left as-is (unparseable or already migrated), ${studentsFailed} student(s) failed and were skipped.`);
 }
 
 main()

@@ -6,22 +6,26 @@ const BookTopicBatchAccess = require("../models/BookTopicBatchAccess");
 const BookTopicStudentAccess = require("../models/BookTopicStudentAccess");
 const Student = require("../models/Student");
 const User = require("../models/User");
-const { sendEmail } = require("../utils/emailHelper");
+const { enqueueEmail } = require("../utils/emailQueue");
 
-// Emails every isEnrolled+isValid=true student across the unlocked batches, once per student
-// per action (deduped by email). Awaited by the request handler so the response can confirm
-// whether the notification actually went out; individual send failures are caught per-recipient
-// so one bad address never aborts the rest of the batch.
-const notifyBatchStudentsOfUnlockedTopics = async (courseIds, book) => {
-    try {
-        const students = await Student.findAll({
-            where: { CourseId: { [Op.in]: courseIds }, isEnrolled: true },
-            include: [{ model: User, attributes: ["isValid"] }],
-        });
+// Resolves the book a topic belongs to (all topics unlocked from one admin request belong
+// to the same book), used to build the notification email link/title.
+const resolveBookFromTopicId = async (topicId) => {
+    const topicWithBook = await BookTopic.findOne({
+        where: { id: topicId },
+        attributes: ["id"],
+        include: [{ model: BookChapter, attributes: ["id"], include: [{ model: Book, attributes: ["title", "slug"] }] }],
+    });
+    return topicWithBook?.BookChapter?.Book || null;
+};
 
-        const bookLink = `${process.env.FRONTEND_URL || "https://www.roadtocareer.net"}/book/${book.slug}`;
-        const subject = `New Topics Unlocked - ${book.title}`;
-        const body = `Hello,
+// Queues one "new topics unlocked" email per isValid=true student with an email (deduped by
+// email) on the in-memory email queue, then returns immediately — actual sending happens in
+// the background so it never blocks the unlock response.
+const queueNotificationForStudents = (students, book) => {
+    const bookLink = `${process.env.FRONTEND_URL || "https://www.roadtocareer.net"}/book/${book.slug}`;
+    const subject = `New Topics Unlocked - ${book.title}`;
+    const body = `Hello,
 
 New topics have been unlocked for the ebook "${book.title}". You can access it here: ${bookLink}
 
@@ -30,28 +34,45 @@ Please login to the portal and check.
 Regards,
 Team, Road to SDET`;
 
-        const seenEmails = new Set();
-        let sentCount = 0;
-        for (const student of students) {
-            if (!student.User || student.User.isValid !== 1) continue;
-            if (!student.email || seenEmails.has(student.email)) continue;
-            seenEmails.add(student.email);
+    const seenEmails = new Set();
+    let queuedCount = 0;
+    for (const student of students) {
+        if (!student.User || student.User.isValid !== 1) continue;
+        if (!student.email || seenEmails.has(student.email)) continue;
+        seenEmails.add(student.email);
 
-            try {
-                const sent = await sendEmail(student.email, subject, body);
-                if (sent) {
-                    sentCount++;
-                } else {
-                    console.warn(`[unlockTopics] sendEmail returned false for ${student.email}.`);
-                }
-            } catch (emailErr) {
-                console.error(`[unlockTopics] Failed sending topic-unlock notification to ${student.email}:`, emailErr);
-            }
-        }
-        return { success: true, sentCount };
+        enqueueEmail({ to: student.email, subject, body, meta: { studentId: student.StudentId, bookSlug: book.slug } });
+        queuedCount++;
+    }
+    return { studentCount: queuedCount, emailsQueued: queuedCount };
+};
+
+// Batch/course unlock: notifies every isEnrolled+isValid=true student across the unlocked batches.
+const queueUnlockedTopicsNotification = async (courseIds, book) => {
+    try {
+        const students = await Student.findAll({
+            where: { CourseId: { [Op.in]: courseIds }, isEnrolled: true },
+            include: [{ model: User, attributes: ["isValid"] }],
+        });
+        return queueNotificationForStudents(students, book);
     } catch (error) {
-        console.error("[unlockTopics] Error notifying batch students of unlocked topics:", error);
-        return { success: false, sentCount: 0 };
+        console.error("[unlockTopics] Error queuing student notifications for unlocked topics:", error);
+        return { studentCount: 0, emailsQueued: 0 };
+    }
+};
+
+// Individual-student unlock: notifies exactly the selected students (isValid=true, has email),
+// regardless of their batch/enrollment — this endpoint is an explicit per-student override.
+const queueStudentUnlockNotification = async (studentIds, book) => {
+    try {
+        const students = await Student.findAll({
+            where: { StudentId: { [Op.in]: studentIds } },
+            include: [{ model: User, attributes: ["isValid"] }],
+        });
+        return queueNotificationForStudents(students, book);
+    } catch (error) {
+        console.error("[unlockTopicsForStudents] Error queuing student notifications:", error);
+        return { studentCount: 0, emailsQueued: 0 };
     }
 };
 
@@ -254,26 +275,25 @@ exports.unlockTopics = async (req, res) => {
         }
 
         // Resolve the book via the first topic's chapter (all topics unlocked from this page
-        // belong to the same book) and email the affected batches' students — awaited here
-        // (not fire-and-forget) so the response can honestly confirm whether the email went out.
-        let emailNotification = { success: false, sentCount: 0 };
+        // belong to the same book) and queue notification emails for the affected batches'
+        // students. Queuing (not sending) is awaited here — it's just a DB read + in-memory
+        // push, so the response still returns as soon as access is granted.
+        let notification = { studentCount: 0, emailsQueued: 0 };
         try {
-            const topicWithBook = await BookTopic.findOne({
-                where: { id: topicIds[0] },
-                attributes: ["id"],
-                include: [{ model: BookChapter, attributes: ["id"], include: [{ model: Book, attributes: ["title", "slug"] }] }],
-            });
-            const book = topicWithBook?.BookChapter?.Book;
+            const book = await resolveBookFromTopicId(topicIds[0]);
             if (book) {
-                emailNotification = await notifyBatchStudentsOfUnlockedTopics(courseIds, book);
+                notification = await queueUnlockedTopicsNotification(courseIds, book);
             }
         } catch (notifyErr) {
             console.error("[unlockTopics] Error resolving book for student notification:", notifyErr);
         }
 
         res.status(200).json({
-            message: `Access updated for ${topicIds.length} topic(s)`,
-            emailNotification,
+            success: true,
+            message: "Student access granted successfully. Notification emails have been queued.",
+            accessGranted: notification.studentCount,
+            emailsQueued: notification.emailsQueued,
+            topicsUpdated: topicIds.length,
         });
     } catch (error) {
         console.error("Error unlocking topics:", error);
@@ -372,7 +392,25 @@ exports.unlockTopicsForStudents = async (req, res) => {
             }
         }
 
-        res.status(200).json({ message: `Access granted for ${topicIds.length} topic(s) to ${studentIds.length} student(s)` });
+        // Access is granted above regardless of email outcome; queuing (a DB read + in-memory
+        // push) is awaited here since it's fast, but actual sending happens in the background.
+        let notification = { emailsQueued: 0 };
+        try {
+            const book = await resolveBookFromTopicId(topicIds[0]);
+            if (book) {
+                notification = await queueStudentUnlockNotification(studentIds, book);
+            }
+        } catch (notifyErr) {
+            console.error("[unlockTopicsForStudents] Error resolving book for student notification:", notifyErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Access granted for ${topicIds.length} topic(s) to ${studentIds.length} student(s). Notification emails have been queued.`,
+            accessGranted: studentIds.length,
+            emailsQueued: notification.emailsQueued,
+            topicsUpdated: topicIds.length,
+        });
     } catch (error) {
         console.error("Error unlocking topics for students:", error);
         res.status(500).json({ message: "Internal server error" });

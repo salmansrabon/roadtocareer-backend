@@ -148,8 +148,19 @@ const listFolderContents = async (parentFolderId, sharedDriveId) => {
     }
 };
 
+// A stalled connection to Google must not hang the request forever, and a
+// transient failure should not lose a fully-assembled upload. Each attempt gets
+// its own read stream (a consumed stream cannot be replayed).
+const DRIVE_UPLOAD_TIMEOUT_MS = 20 * 60 * 1000; // 20 min per attempt
+const DRIVE_UPLOAD_MAX_ATTEMPTS = 3; // 1 initial + 2 retries
+const DRIVE_UPLOAD_RETRY_DELAY_MS = 3000; // multiplied by attempt number
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
- * Upload a File into a Folder in a Shared Drive (streamed from local disk)
+ * Upload a File into a Folder in a Shared Drive (streamed from local disk).
+ * Retries transient failures, recreating the read stream each attempt, and
+ * times out a stalled attempt so it can't hang indefinitely.
  * @param {string} parentFolderId - The ID of the destination folder
  * @param {string} filePath - Local disk path of the file to upload (e.g. a Multer temp file)
  * @param {string} fileName - Name to give the file in Drive
@@ -157,25 +168,38 @@ const listFolderContents = async (parentFolderId, sharedDriveId) => {
  * @returns {Promise<Object>} - Uploaded file's id/name/mimeType/createdTime
  */
 const uploadFileToFolder = async (parentFolderId, filePath, fileName, mimeType) => {
-    try {
-        const response = await drive.files.create({
-            requestBody: {
-                name: fileName,
-                parents: [parentFolderId],
-            },
-            media: {
-                mimeType,
-                body: fs.createReadStream(filePath),
-            },
-            supportsAllDrives: true,
-            fields: 'id, name, mimeType, createdTime',
-        });
+    let lastError;
+    for (let attempt = 1; attempt <= DRIVE_UPLOAD_MAX_ATTEMPTS; attempt++) {
+        try {
+            const response = await drive.files.create(
+                {
+                    requestBody: {
+                        name: fileName,
+                        parents: [parentFolderId],
+                    },
+                    media: {
+                        mimeType,
+                        body: fs.createReadStream(filePath),
+                    },
+                    supportsAllDrives: true,
+                    fields: 'id, name, mimeType, createdTime',
+                },
+                { timeout: DRIVE_UPLOAD_TIMEOUT_MS }
+            );
 
-        return { success: true, file: response.data };
-    } catch (error) {
-        console.error("Error uploading file to Drive:", error);
-        return { success: false, error: error.message };
+            return { success: true, file: response.data };
+        } catch (error) {
+            lastError = error;
+            console.error(
+                `Error uploading file to Drive (attempt ${attempt}/${DRIVE_UPLOAD_MAX_ATTEMPTS}):`,
+                error.message || error
+            );
+            if (attempt < DRIVE_UPLOAD_MAX_ATTEMPTS) {
+                await wait(DRIVE_UPLOAD_RETRY_DELAY_MS * attempt);
+            }
+        }
     }
+    return { success: false, error: lastError?.message || "Drive upload failed." };
 };
 
 module.exports = { grantDriveAccess, removeDriveAccess, revokeDriveAccessByEmail, listFolderContents, uploadFileToFolder };

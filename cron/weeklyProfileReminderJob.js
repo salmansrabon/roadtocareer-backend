@@ -2,7 +2,8 @@ const { Op } = require("sequelize");
 const moment = require("moment-timezone");
 const Student = require("../models/Student");
 const User = require("../models/User");
-const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
+const { sendEmailWithAttachment } = require("../utils/emailHelper");
+const { enqueueEmail } = require("../utils/emailQueue");
 
 const TIMEZONE = "Asia/Dhaka";
 const PROFILE_SCORE_THRESHOLD = 80;
@@ -37,7 +38,7 @@ Keeping your profile complete and up to date increases your visibility and helps
 
 Regards,
 Team Road to SDET
-WhatsApp: 01780808778`;
+WhatsApp: 01782808778`;
 
 const buildAdminSummaryBody = (totalEligible, successCount, failedCount, reportDateStr) => `Dear Admin,
 
@@ -117,8 +118,6 @@ async function runWeeklyProfileReminderJob() {
 
   console.log("⏰ [weeklyProfileReminderJob] Starting weekly profile completion reminder job...");
   const reportDateStr = moment.tz(TIMEZONE).format("DD-MM-YYYY");
-  let successCount = 0;
-  let failedCount = 0;
 
   try {
     const eligibleStudents = await Student.findAll({
@@ -131,23 +130,29 @@ async function runWeeklyProfileReminderJob() {
 
     console.log(`[weeklyProfileReminderJob] Found ${eligibleStudents.length} eligible student(s).`);
 
-    for (const student of eligibleStudents) {
-      try {
+    // Enqueued (not awaited one-by-one) so sends happen concurrently via emailQueue's
+    // worker pool (retries included); one student's failure never blocks the rest.
+    const sendResults = await Promise.all(
+      eligibleStudents.map(async (student) => {
         const subject = `Complete Your Road to SDET Profile — Current Score: ${student.profile_score}%`;
         const body = buildReminderEmailBody(student.student_name, student.profile_score);
-        const sent = await sendEmail(student.email, subject, body, "text/plain", { priority: "high" });
+        const sent = await enqueueEmail({
+          to: student.email,
+          subject,
+          body,
+          meta: { studentId: student.StudentId },
+          options: { priority: "high" },
+        });
         if (sent) {
-          successCount++;
           console.log(`[weeklyProfileReminderJob] Reminder sent to ${student.email} (${student.StudentId}).`);
         } else {
-          failedCount++;
-          console.warn(`[weeklyProfileReminderJob] sendEmail returned false for ${student.email}.`);
+          console.warn(`[weeklyProfileReminderJob] Reminder failed for ${student.email} (${student.StudentId}) after retries.`);
         }
-      } catch (emailErr) {
-        failedCount++;
-        console.error(`[weeklyProfileReminderJob] Failed sending to ${student.email}:`, emailErr);
-      }
-    }
+        return sent;
+      })
+    );
+    const successCount = sendResults.filter(Boolean).length;
+    const failedCount = sendResults.length - successCount;
 
     await sendAdminReminderReport(eligibleStudents, successCount, failedCount, reportDateStr);
 

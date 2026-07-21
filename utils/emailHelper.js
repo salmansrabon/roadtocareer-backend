@@ -13,8 +13,11 @@ const auth = new google.auth.GoogleAuth({
     },
 });
 
+// Headers recognized by Gmail/Outlook/Apple Mail clients to flag a message as high-importance
+const HIGH_PRIORITY_HEADERS = "Importance: high\r\nX-Priority: 1\r\nX-MSMail-Priority: High\r\n";
+
 // Function to send email
-async function sendEmail(to, subject, text, contentType = "text/plain") {
+async function sendEmail(to, subject, text, contentType = "text/plain", options = {}) {
     try {
         const client = await auth.getClient();
         const gmail = google.gmail({ version: "v1", auth: client });
@@ -22,12 +25,14 @@ async function sendEmail(to, subject, text, contentType = "text/plain") {
         // ✅ Set the "From" field with custom alias
         const senderName = "Road to SDET"; // ✅ Alias name
         const senderEmail = "salman@roadtocareer.net";
+        const priorityHeaders = options.priority === "high" ? HIGH_PRIORITY_HEADERS : "";
 
         // ✅ Encode the email with correct formatting
         const encodedMessage = Buffer.from(
             `From: ${senderName} <${senderEmail}>\r\n` +  // ✅ Properly formatted alias
             `To: ${to}\r\n` +
             `Subject: ${subject}\r\n` +
+            priorityHeaders +
             "MIME-Version: 1.0\r\n" +
             `Content-Type: ${contentType}; charset=UTF-8\r\n\r\n` +
             `${text}`
@@ -55,7 +60,7 @@ async function sendEmail(to, subject, text, contentType = "text/plain") {
 }
 
 // Function to send an email with a single file attachment (e.g. a CSV report)
-async function sendEmailWithAttachment(to, subject, text, attachment) {
+async function sendEmailWithAttachment(to, subject, text, attachment, options = {}) {
     try {
         const client = await auth.getClient();
         const gmail = google.gmail({ version: "v1", auth: client });
@@ -63,6 +68,7 @@ async function sendEmailWithAttachment(to, subject, text, attachment) {
         const senderName = "Road to SDET";
         const senderEmail = "salman@roadtocareer.net";
         const boundary = `boundary_${Date.now()}`;
+        const priorityHeaders = options.priority === "high" ? HIGH_PRIORITY_HEADERS : "";
 
         const base64Attachment = Buffer.from(attachment.content, "utf-8").toString("base64");
 
@@ -70,6 +76,7 @@ async function sendEmailWithAttachment(to, subject, text, attachment) {
             `From: ${senderName} <${senderEmail}>\r\n` +
             `To: ${to}\r\n` +
             `Subject: ${subject}\r\n` +
+            priorityHeaders +
             "MIME-Version: 1.0\r\n" +
             `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n` +
             `--${boundary}\r\n` +

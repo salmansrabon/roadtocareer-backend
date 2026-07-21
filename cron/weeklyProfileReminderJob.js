@@ -6,7 +6,7 @@ const { sendEmailWithAttachment } = require("../utils/emailHelper");
 const { enqueueEmail } = require("../utils/emailQueue");
 
 const TIMEZONE = "Asia/Dhaka";
-const PROFILE_SCORE_THRESHOLD = 80;
+const PROFILE_SCORE_THRESHOLD = 70;
 
 let isJobRunning = false;
 
@@ -22,7 +22,7 @@ const buildReminderEmailBody = (studentName, profileScore) => `Dear ${studentNam
 
 We noticed that your Road to SDET profile is currently ${profileScore}% complete.
 
-Please update your profile and increase your profile completion score to at least 80%.
+Please update your profile and increase your profile completion score to at least ${PROFILE_SCORE_THRESHOLD}%.
 
 To improve your profile score, please review and update the following information where applicable:
 

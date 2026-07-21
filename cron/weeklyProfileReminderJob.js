@@ -4,6 +4,7 @@ const Student = require("../models/Student");
 const User = require("../models/User");
 const { sendEmailWithAttachment } = require("../utils/emailHelper");
 const { enqueueEmail } = require("../utils/emailQueue");
+const { getProfileGapAnalysis, buildPersonalizedReminderBody } = require("../utils/profileGapHelper");
 
 const TIMEZONE = "Asia/Dhaka";
 const PROFILE_SCORE_THRESHOLD = 70;
@@ -17,28 +18,6 @@ const escapeCSV = (value) => {
   }
   return str;
 };
-
-const buildReminderEmailBody = (studentName, profileScore) => `Dear ${studentName},
-
-We noticed that your Road to SDET profile is currently ${profileScore}% complete.
-
-Please update your profile and increase your profile completion score to at least ${PROFILE_SCORE_THRESHOLD}%.
-
-To improve your profile score, please review and update the following information where applicable:
-
-Technical skills
-Soft skills
-Employment details
-Academic information
-Projects
-Certifications
-Other relevant profile information
-
-Keeping your profile complete and up to date increases your visibility and helps us better evaluate you for internships, job opportunities, and recruiter recommendations.
-
-Regards,
-Team Road to SDET
-WhatsApp: 01782808778`;
 
 const buildAdminSummaryBody = (totalEligible, successCount, failedCount, reportDateStr) => `Dear Admin,
 
@@ -59,7 +38,7 @@ The report includes each student's course, batch, contact information, migration
 Regards,
 Road to SDET System`;
 
-async function sendAdminReminderReport(eligibleStudents, successCount, failedCount, reportDateStr) {
+async function sendAdminReminderReport(studentsWithGaps, successCount, failedCount, reportDateStr) {
   try {
     const admins = await User.findAll({
       where: { role: "admin" },
@@ -71,11 +50,22 @@ async function sendAdminReminderReport(eligibleStudents, successCount, failedCou
       return;
     }
 
-    const headers = ["course_id", "batch_no", "student_name", "email", "mobile", "isMigrated", "profile_score"];
+    const headers = [
+      "course_id", "batch_no", "student_name", "email", "mobile", "isMigrated", "profile_score",
+      "employment_status", "points_to_threshold", "top_gap", "missing_sections",
+    ];
     const csvRows = [headers.join(",")];
-    eligibleStudents.forEach((s) => {
+    studentsWithGaps.forEach(({ student: s, gap }) => {
+      const topGap = [...gap.missingItems].sort((a, b) => b.pointsAvailable - a.pointsAvailable)[0];
+      const missingSections = gap.sections
+        .filter((section) => section.currentSectionScore < section.sectionMaxAchievable)
+        .map((section) => section.section)
+        .join("; ");
       csvRows.push(
-        [s.CourseId, s.batch_no, s.student_name, s.email, s.mobile, s.isMigrated, s.profile_score]
+        [
+          s.CourseId, s.batch_no, s.student_name, s.email, s.mobile, s.isMigrated, s.profile_score,
+          gap.employmentStatus, gap.pointsToThreshold, topGap ? topGap.label : "", missingSections,
+        ]
           .map(escapeCSV)
           .join(",")
       );
@@ -85,7 +75,7 @@ async function sendAdminReminderReport(eligibleStudents, successCount, failedCou
 
     const toAddresses = admins.map((a) => a.email).join(", ");
     const subject = `Weekly Profile Completion Reminder Report — ${reportDateStr}`;
-    const body = buildAdminSummaryBody(eligibleStudents.length, successCount, failedCount, reportDateStr);
+    const body = buildAdminSummaryBody(studentsWithGaps.length, successCount, failedCount, reportDateStr);
 
     const sent = await sendEmailWithAttachment(
       toAddresses,
@@ -130,12 +120,19 @@ async function runWeeklyProfileReminderJob() {
 
     console.log(`[weeklyProfileReminderJob] Found ${eligibleStudents.length} eligible student(s).`);
 
+    // Computed once per student and reused for both the email body and the
+    // admin CSV — avoids running the gap analysis twice per student.
+    const studentsWithGaps = eligibleStudents.map((student) => ({
+      student,
+      gap: getProfileGapAnalysis(student.toJSON(), PROFILE_SCORE_THRESHOLD),
+    }));
+
     // Enqueued (not awaited one-by-one) so sends happen concurrently via emailQueue's
     // worker pool (retries included); one student's failure never blocks the rest.
     const sendResults = await Promise.all(
-      eligibleStudents.map(async (student) => {
+      studentsWithGaps.map(async ({ student, gap }) => {
         const subject = `Complete Your Road to SDET Profile — Current Score: ${student.profile_score}%`;
-        const body = buildReminderEmailBody(student.student_name, student.profile_score);
+        const body = buildPersonalizedReminderBody(student, gap);
         const sent = await enqueueEmail({
           to: student.email,
           subject,
@@ -154,7 +151,7 @@ async function runWeeklyProfileReminderJob() {
     const successCount = sendResults.filter(Boolean).length;
     const failedCount = sendResults.length - successCount;
 
-    await sendAdminReminderReport(eligibleStudents, successCount, failedCount, reportDateStr);
+    await sendAdminReminderReport(studentsWithGaps, successCount, failedCount, reportDateStr);
 
     console.log(`✅ [weeklyProfileReminderJob] Job finished. Success: ${successCount}, Failed: ${failedCount}.`);
   } catch (err) {

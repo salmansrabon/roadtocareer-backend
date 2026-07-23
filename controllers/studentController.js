@@ -678,6 +678,9 @@ exports.getQaTalent = async (req, res) => {
     // ✅ Filter: Only show students with a profile score of at least 70%
     whereClause.profile_score = { [Op.gte]: MIN_SCORE_THRESHOLD };
 
+    // ✅ Filter: Only show students who are actively looking for a job
+    whereClause.lookingForJob = "Yes";
+
     // ✅ Build include clause for isValid filter
     const includeClause = [
       {

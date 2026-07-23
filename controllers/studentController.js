@@ -17,6 +17,7 @@ const {
   calculateAttendancePercentage,
 } = require("../utils/attendanceHelper");
 const { calculateProfileScore } = require("../utils/profileScoreHelper");
+const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {
@@ -674,17 +675,8 @@ exports.getQaTalent = async (req, res) => {
     if (isEnrolled !== undefined && isEnrolled !== "")
       whereClause.isEnrolled = parseInt(isEnrolled);
 
-    // ✅ Filter: Only show students with non-empty technical_skill array
-    // Check if skill field is not null and technical_skill array is not empty
-    // ❗ Proper technical_skill filter block
-    whereClause[Op.and] = [
-      Sequelize.literal("skill IS NOT NULL"),
-      Sequelize.literal("JSON_EXTRACT(skill, '$.technical_skill') IS NOT NULL"),
-      Sequelize.literal("JSON_EXTRACT(skill, '$.technical_skill') != '[]'"),
-      Sequelize.literal(
-        "JSON_LENGTH(JSON_EXTRACT(skill, '$.technical_skill')) > 0"
-      ),
-    ];
+    // ✅ Filter: Only show students with a profile score of at least 70%
+    whereClause.profile_score = { [Op.gte]: MIN_SCORE_THRESHOLD };
 
     // ✅ Build include clause for isValid filter
     const includeClause = [

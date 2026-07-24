@@ -756,12 +756,15 @@ exports.getQaTalent = async (req, res) => {
       limit: limitNumber,
     });
 
-    // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
+    // ✅ LinkedIn/GitHub are always public — mobile and email are privacy-gated
     const students = studentsRaw.map(student => {
       const studentData = student.toJSON();
 
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
+      }
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
       }
 
       return studentData;
@@ -901,11 +904,14 @@ exports.getStudentById = async (req, res) => {
     const studentData = studentRaw.toJSON();
 
     // ✅ Owners viewing their own profile and admins always see everything.
-    // Anyone else (e.g. a public portfolio visitor) only has mobile gated by
-    // privacy setting — email/linkedin/github are always public.
+    // Anyone else (e.g. a public portfolio visitor) has mobile and email gated
+    // by privacy setting — linkedin/github are always public.
     if (!isAdmin && !isOwner) {
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
+      }
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
       }
     }
 
@@ -1012,8 +1018,8 @@ exports.updateStudent = async (req, res) => {
       linkedin: req.body.linkedin,
       github: req.body.github,
       isMobilePublic: req.body.isMobilePublic,
-      // ✅ Email/LinkedIn/GitHub are always public now — no per-field toggle
-      isEmailPublic: true,
+      isEmailPublic: req.body.isEmailPublic,
+      // ✅ LinkedIn/GitHub are always public — no per-field toggle
       isLinkedInPublic: true,
       isGithubPublic: true,
       aboutMe: req.body.aboutMe,

@@ -627,9 +627,12 @@ Response: {"lookingForJob": "Yes"}`;
 
       // ✅ Filter private data based on privacy settings before sending to frontend
       const filteredBestMatching = bestMatchingStudents.map(studentData => {
-        // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
+        // ✅ LinkedIn/GitHub are always public — mobile and email are privacy-gated
         if (!studentData.isMobilePublic) {
           delete studentData.mobile;
+        }
+        if (!studentData.isEmailPublic) {
+          delete studentData.email;
         }
 
         return studentData;
@@ -651,9 +654,12 @@ Response: {"lookingForJob": "Yes"}`;
     const filteredStudents = students.map(student => {
       const studentData = student.toJSON();
 
-      // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
+      // ✅ LinkedIn/GitHub are always public — mobile and email are privacy-gated
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
+      }
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
       }
 
       return studentData;
@@ -920,9 +926,12 @@ exports.searchQATalent = async (req, res) => {
     const students = studentsRaw.map(student => {
       const studentData = student.toJSON();
 
-      // ✅ Email/LinkedIn/GitHub are always public — only mobile is privacy-gated
+      // ✅ LinkedIn/GitHub are always public — mobile and email are privacy-gated
       if (!studentData.isMobilePublic) {
         delete studentData.mobile;
+      }
+      if (!studentData.isEmailPublic) {
+        delete studentData.email;
       }
 
       return studentData;

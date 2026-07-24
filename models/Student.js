@@ -158,7 +158,7 @@ const Student = sequelize.define("Student", {
     },
     isEmailPublic: {
         type: DataTypes.BOOLEAN,
-        defaultValue: false
+        defaultValue: true
     },
     isLinkedInPublic: {
         type: DataTypes.BOOLEAN,

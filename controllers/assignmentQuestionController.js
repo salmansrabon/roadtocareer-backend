@@ -1,6 +1,8 @@
 const AssignmentQuestion = require('../models/AssignmentQuestion');
+const AssignmentAnswer = require('../models/AssignmentAnswer');
 const Student = require('../models/Student');
 const User = require('../models/User');
+const { Op } = require('sequelize');
 const { sendEmail } = require("../utils/emailHelper");
 
 const createAssignmentQuestion = async (req, res) => {
@@ -99,9 +101,35 @@ const getAllAssignmentQuestions = async (req, res) => {
             return res.status(404).json({ message: "No assignments found.", count: 0, assignments: [] });
         }
 
+        // Tally submitted vs. still-pending-review answers per assignment,
+        // so the list view can flag which ones the instructor still needs to score
+        const answers = await AssignmentAnswer.findAll({
+            where: { AssignmentId: { [Op.in]: assignments.map(a => a.id) } },
+            attributes: ["AssignmentId", "Score"]
+        });
+
+        const statsByAssignmentId = {};
+        for (const answer of answers) {
+            const stats = statsByAssignmentId[answer.AssignmentId] || (statsByAssignmentId[answer.AssignmentId] = { submittedCount: 0, pendingReviewCount: 0 });
+            stats.submittedCount += 1;
+            if (answer.Score === null || answer.Score === undefined) {
+                stats.pendingReviewCount += 1;
+            }
+        }
+
+        const assignmentsWithStats = assignments.map(a => {
+            const stats = statsByAssignmentId[a.id] || { submittedCount: 0, pendingReviewCount: 0 };
+            return {
+                ...a.toJSON(),
+                submittedCount: stats.submittedCount,
+                pendingReviewCount: stats.pendingReviewCount,
+                allReviewed: stats.submittedCount > 0 && stats.pendingReviewCount === 0
+            };
+        });
+
         res.status(200).json({
-            count: assignments.length,
-            assignments
+            count: assignmentsWithStats.length,
+            assignments: assignmentsWithStats
         });
     } catch (error) {
         console.error(error);

@@ -73,6 +73,7 @@ const getAssignmentSummaryByCourse = async (req, res) => {
         StudentId: sid,
         student_name: student.student_name,
         email: student.User?.email || "",
+        previous_batch: student.previous_batch_no || "",
         submittedCount: studentAnswers.length,
         totalScore: studentAnswers.reduce((sum, a) => sum + (a.Score || 0), 0),
         answers: studentAnswers.map(a => ({

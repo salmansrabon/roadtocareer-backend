@@ -78,6 +78,12 @@ async function sendAdminAbsentListSummary(todayLocal, mailedStudents) {
       event_title: "Absent Students List",
       event_description: JSON.stringify({
         absentStudentCount: mailedStudents.length,
+        // Stored as an already-formatted Dhaka wall-clock string (not left to
+        // createdAt + a client-side timezone conversion) because MySQL's
+        // TIMESTAMP session-timezone conversion and mysql2/Sequelize's own
+        // timezone assumptions don't agree on this server, which silently
+        // shifts createdAt by several hours when read back.
+        triggeredAtDhaka: todayLocal.format("MMM DD, YYYY, hh:mm A"),
         students: mailedStudents,
       }),
       createdAt: todayLocal.toDate(),

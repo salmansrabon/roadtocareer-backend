@@ -13,31 +13,46 @@ const getAssignmentSummaryByCourse = async (req, res) => {
   }
 
   try {
-    // 1. Get all students of the course
-    const students = await Student.findAll({
-      where: { CourseId: courseId },
-      include: [{ model: User, attributes: ["email"] }]
-    });
-
-    if (!students.length) {
-      return res.status(404).json({ message: "No students found for this course" });
-    }
-
-    const studentIds = students.map(s => s.StudentId);
-
-    // 2. Get all assignment answers by students of this course
+    // 1. Get all answers submitted against THIS course's assignments only
+    // (a student's answers from a previous batch, pre-migration, must not
+    // count toward the batch currently being viewed)
     const answers = await AssignmentAnswer.findAll({
-      where: {
-        StudentId: { [Op.in]: studentIds }
-      },
       include: [
         {
           model: AssignmentQuestion,
           attributes: ["Assignment_Title", "topic_name"],
-          as: "Assignment"
+          as: "Assignment",
+          where: { courseId },
+          required: true
         }
       ]
     });
+
+    const studentIdsWithSubmissions = [...new Set(answers.map(a => a.StudentId))];
+
+    // 2. Students currently enrolled in this course, PLUS students who have
+    // since migrated to another batch but still hold submissions against
+    // this course's assignments (so their history stays visible here)
+    const currentStudents = await Student.findAll({
+      where: { CourseId: courseId },
+      include: [{ model: User, attributes: ["email"] }]
+    });
+
+    const currentStudentIds = new Set(currentStudents.map(s => s.StudentId));
+    const migratedOutStudentIds = studentIdsWithSubmissions.filter(id => !currentStudentIds.has(id));
+
+    const migratedOutStudents = migratedOutStudentIds.length
+      ? await Student.findAll({
+          where: { StudentId: { [Op.in]: migratedOutStudentIds } },
+          include: [{ model: User, attributes: ["email"] }]
+        })
+      : [];
+
+    const students = [...currentStudents, ...migratedOutStudents];
+
+    if (!students.length) {
+      return res.status(404).json({ message: "No students found for this course" });
+    }
 
     // 3. Group by StudentId
     const summaryMap = {};

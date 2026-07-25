@@ -34,8 +34,8 @@ const getAssignmentSummaryByCourse = async (req, res) => {
     // since migrated to another batch but still hold submissions against
     // this course's assignments (so their history stays visible here)
     const currentStudents = await Student.findAll({
-      where: { CourseId: courseId },
-      include: [{ model: User, attributes: ["email"] }]
+      where: { CourseId: courseId, isEnrolled: true },
+      include: [{ model: User, attributes: ["email"], where: { isValid: true } }]
     });
 
     const currentStudentIds = new Set(currentStudents.map(s => s.StudentId));
@@ -43,8 +43,8 @@ const getAssignmentSummaryByCourse = async (req, res) => {
 
     const migratedOutStudents = migratedOutStudentIds.length
       ? await Student.findAll({
-          where: { StudentId: { [Op.in]: migratedOutStudentIds } },
-          include: [{ model: User, attributes: ["email"] }]
+          where: { StudentId: { [Op.in]: migratedOutStudentIds }, isEnrolled: true },
+          include: [{ model: User, attributes: ["email"], where: { isValid: true } }]
         })
       : [];
 

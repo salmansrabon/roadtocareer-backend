@@ -2,6 +2,7 @@ const Student = require("../models/Student");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const Attendance = require("../models/Attendance");
+const Event = require("../models/Event");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
 const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
@@ -72,6 +73,16 @@ async function sendAdminAbsentListSummary(todayLocal, mailedStudents) {
     } else {
       console.warn(`[attendanceReminderJob] sendEmailWithAttachment returned false for admin summary.`);
     }
+
+    await Event.create({
+      event_title: "Absent Students List",
+      event_description: JSON.stringify({
+        absentStudentCount: mailedStudents.length,
+        students: mailedStudents,
+      }),
+      createdAt: todayLocal.toDate(),
+    });
+    console.log(`[attendanceReminderJob] Logged "Absent Students List" event with ${mailedStudents.length} student(s).`);
   } catch (err) {
     console.error("[attendanceReminderJob] Failed to send admin summary:", err);
   }

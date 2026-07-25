@@ -28,6 +28,7 @@ const seoRoutes = require("./routes/seoRoutes");
 const aiVoiceRoutes = require("./routes/aiVoiceRoutes");
 const blogRoutes = require("./routes/blogRoutes");
 const eventFormRoutes = require("./routes/eventFormRoutes");
+const eventRoutes = require("./routes/eventRoutes");
 const bookRoutes = require("./routes/bookRoutes");
 
 // remove this block after upgrading to node 18 into cpanel
@@ -101,6 +102,7 @@ app.use("/api/seo", seoRoutes);
 app.use("/api/ai-voice", aiVoiceRoutes);
 app.use("/api/blogs", blogRoutes);
 app.use("/api", eventFormRoutes);
+app.use("/api/events", eventRoutes);
 app.use("/api/books", bookRoutes);
 
 const PORT = process.env.PORT || 5000;

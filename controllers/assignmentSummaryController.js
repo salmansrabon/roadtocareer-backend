@@ -13,6 +13,14 @@ const getAssignmentSummaryByCourse = async (req, res) => {
   }
 
   try {
+    // 0. Total assignments given for this course, and their combined max score
+    const courseAssignments = await AssignmentQuestion.findAll({
+      where: { courseId },
+      attributes: ["id", "TotalScore"]
+    });
+    const totalAssignments = courseAssignments.length;
+    const totalAllocatedScore = courseAssignments.reduce((sum, a) => sum + (a.TotalScore || 0), 0);
+
     // 1. Get all answers submitted against THIS course's assignments only
     // (a student's answers from a previous batch, pre-migration, must not
     // count toward the batch currently being viewed)
@@ -83,6 +91,8 @@ const getAssignmentSummaryByCourse = async (req, res) => {
     res.status(200).json({
       courseId,
       studentCount: summary.length,
+      totalAssignments,
+      totalAllocatedScore,
       summary
     });
 

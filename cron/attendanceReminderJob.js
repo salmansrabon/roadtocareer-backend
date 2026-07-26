@@ -3,7 +3,6 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const Attendance = require("../models/Attendance");
 const Event = require("../models/Event");
-const { Op, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
 const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
 const { isTodayAClassDay, hasAttendedOnDate, getPreviousClassDay } = require("../utils/attendanceHelper");
@@ -101,15 +100,10 @@ async function runAttendanceReminderJob() {
 
   try {
     const courses = await Course.findAll({
-      where: {
-        is_enabled: true,
-        [Op.and]: [
-          Sequelize.where(Sequelize.fn("LOWER", Sequelize.col("course_initial")), "sdet"),
-        ],
-      },
+      where: { is_latest: true },
     });
 
-    console.log(`[attendanceReminderJob] Found ${courses.length} enabled sdet course(s).`);
+    console.log(`[attendanceReminderJob] Found ${courses.length} course(s) flagged is_latest.`);
 
     for (const course of courses) {
       try {

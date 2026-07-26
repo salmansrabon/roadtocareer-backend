@@ -75,6 +75,7 @@ exports.getCourseDetails = async (req, res) => {
                 "drive_folder_id",
                 "short_description",
                 "is_enabled",
+                "is_latest",
                 "enrollment",
                 "enrollment_start_date",
                 "enrollment_end_date",
@@ -121,7 +122,7 @@ exports.getCoursesList = async (req, res) => {
             where: Object.keys(condition).length ? condition : undefined,
             attributes: [
                 "courseId", "batch_no", "course_title", "drive_folder_id",
-                "short_description", "is_enabled", "enrollment", "enrollment_start_date",
+                "short_description", "is_enabled", "is_latest", "enrollment", "enrollment_start_date",
                 "enrollment_end_date", "orientation_date", "class_start_date", "class_days",
                 "class_time", "course_image", "total_class"
             ],
@@ -152,6 +153,7 @@ exports.updateCourse = async (req, res) => {
             short_description,
             drive_folder_id,
             is_enabled,
+            is_latest,
             enrollment,
             enrollment_start_date,
             enrollment_end_date,
@@ -174,6 +176,7 @@ exports.updateCourse = async (req, res) => {
             short_description,
             drive_folder_id,
             is_enabled,
+            is_latest,
             enrollment,
             enrollment_start_date,
             enrollment_end_date,

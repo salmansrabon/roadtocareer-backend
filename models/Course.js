@@ -33,6 +33,10 @@ const Course = sequelize.define("Course", {
         type: DataTypes.BOOLEAN,
         defaultValue: true
     },
+    is_latest: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
     enrollment: {
         type: DataTypes.BOOLEAN,
         defaultValue: true

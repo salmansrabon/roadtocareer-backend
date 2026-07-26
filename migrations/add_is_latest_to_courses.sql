@@ -1,0 +1,3 @@
+ALTER TABLE courses
+ADD COLUMN is_latest BOOLEAN NOT NULL DEFAULT 0
+AFTER is_enabled;

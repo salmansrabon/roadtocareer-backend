@@ -3,6 +3,8 @@ const Course = require("../models/Course");
 const Package = require("../models/Package");
 const User = require("../models/User");
 const Attendance = require("../models/Attendance");
+const Remark = require("../models/Remark");
+const { appendRemarkEntry } = require("./remarkController");
 const bcrypt = require("bcryptjs");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
@@ -894,6 +896,11 @@ exports.getStudentById = async (req, res) => {
             ),
           },
         },
+        {
+          model: Remark,
+          attributes: ["remark"],
+          required: false, // LEFT JOIN — students with no remarks yet have no row
+        },
       ],
     });
 
@@ -902,6 +909,10 @@ exports.getStudentById = async (req, res) => {
     }
 
     const studentData = studentRaw.toJSON();
+    // Flatten the joined remarks history into a plain array for the frontend;
+    // students with no remarks row yet simply get an empty list.
+    studentData.remarks = studentData.Remark?.remark || [];
+    delete studentData.Remark;
 
     // ✅ Owners viewing their own profile and admins always see everything.
     // Anyone else (e.g. a public portfolio visitor) has mobile and email gated
@@ -948,7 +959,6 @@ exports.updateStudent = async (req, res) => {
       designation,
       experience,
       knowMe,
-      remark,
       opinion,
       isEnrolled,
       certificate,
@@ -1010,7 +1020,6 @@ exports.updateStudent = async (req, res) => {
       isISTQBCertified: req.body.isISTQBCertified,
       istqb_certificate: req.body.istqb_certificate,
       knowMe,
-      remark,
       opinion,
       isEnrolled,
       certificate: finalCertificateUrl,
@@ -1473,11 +1482,15 @@ exports.migrateStudent = async (req, res) => {
     const oldBatch = student.batch_no;
     const oldCourseId = student.CourseId;
 
+    // Log the migration note as a new dated remark entry (same path as any
+    // other admin-written remark) instead of overwriting the scalar column
+    // directly — this also keeps the students.remark mirror in sync.
+    await appendRemarkEntry(studentId, remark || `Migrated from batch ${oldBatch} to ${batch_no}`);
+
     //Update student migration info
     await Student.update(
       {
         quiz_answer: null,
-        remark: remark || `Migrated from batch ${oldBatch} to ${batch_no}`,
         CourseId, // Update courseId
         package, // Update package
         batch_no, // Update new batch

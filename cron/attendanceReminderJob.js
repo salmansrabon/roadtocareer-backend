@@ -154,6 +154,7 @@ async function runAttendanceReminderJob() {
             if (sent) {
               console.log(`[attendanceReminderJob] Reminder sent to ${student.email} (${student.StudentId}).`);
               mailedStudents.push({
+                StudentId: student.StudentId,
                 batch_no: student.batch_no,
                 studentName: student.student_name,
                 email: student.email,

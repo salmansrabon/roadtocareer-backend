@@ -112,9 +112,21 @@ const deleteRemark = async (req, res) => {
   }
 };
 
+const getRemarks = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const remarkRow = await Remark.findOne({ where: { studentId } });
+    res.status(200).json({ remarks: remarkRow?.remark || [] });
+  } catch (error) {
+    console.error("Error fetching remarks:", error);
+    res.status(500).json({ message: "Error fetching remarks" });
+  }
+};
+
 module.exports = {
   addRemark,
   updateRemark,
   deleteRemark,
+  getRemarks,
   appendRemarkEntry,
 };

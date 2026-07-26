@@ -437,10 +437,23 @@ exports.getUnpaidStudents = async (req, res) => {
 
         const totalPages = Math.ceil(totalUnpaid / limit);
 
+        // 🔹 The dashboard's headline "Total Due" should only reflect currently
+        // active + enrolled students. The unpaid list/count above intentionally
+        // still include disabled students so admins can see and manage them there.
+        const validUserRows = await User.findAll({
+            attributes: ['username'],
+            where: { isValid: true },
+            raw: true,
+        });
+        const validUsernames = validUserRows.map(row => row.username);
+
         const totalDueAmount = await Student.sum('due', {
             where: {
                 ...studentFilter,
-                StudentId: { [Op.notIn]: paidStudentIds }
+                StudentId: {
+                    [Op.notIn]: paidStudentIds,
+                    [Op.in]: validUsernames
+                }
             }
         }) || 0;
 
@@ -474,7 +487,31 @@ exports.deletePaymentById = async (req, res) => {
             return res.status(404).json({ message: "Payment not found" });
         }
 
+        const { studentId, packageId } = payment;
+
         await payment.destroy();
+
+        // 🔹 Recompute the student's due after removing this payment, mirroring
+        // addPayment/updatePayment — otherwise the stored `due` column (read by
+        // the students list, unpaid-students page, and CSV export) goes stale.
+        const packageDetails = await Package.findOne({ where: { id: packageId } });
+        const student = await Student.findOne({ where: { StudentId: studentId } });
+
+        if (packageDetails && student) {
+            const remainingPayments = await Payment.findAll({ where: { studentId, packageId } });
+
+            if (remainingPayments.length === 0) {
+                // No payments left at all — back to "not started", not a paid-in-full 0.
+                await student.update({ due: null });
+            } else {
+                const courseFee = parseFloat(packageDetails.discountedFee);
+                const totalPaid = remainingPayments.reduce((sum, p) => sum + parseFloat(p.paidAmount || 0), 0);
+                const totalAdjustment = remainingPayments.reduce((sum, p) => sum + parseFloat(p.dueAdjustmentAmount || 0), 0);
+                const remainingBalance = courseFee - totalPaid - totalAdjustment;
+
+                await student.update({ due: remainingBalance >= 0 ? remainingBalance : 0 });
+            }
+        }
 
         return res.status(200).json({ message: "Payment deleted successfully" });
     } catch (error) {

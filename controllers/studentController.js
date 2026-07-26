@@ -1,6 +1,7 @@
 const Student = require("../models/Student");
 const Course = require("../models/Course");
 const Package = require("../models/Package");
+const Payment = require("../models/Payment");
 const User = require("../models/User");
 const Attendance = require("../models/Attendance");
 const Remark = require("../models/Remark");
@@ -932,10 +933,33 @@ exports.getStudentById = async (req, res) => {
         ? studentRaw.Package?.regularFee
         : studentRaw.Package?.discountedFee;
 
+    // ✅ Recompute due live from payment records (mirrors /payments/history) instead of
+    // trusting the stored `due` column, which can go stale if a payment is later
+    // edited/deleted. Kept null (not full course fee) when no payment exists yet,
+    // matching the stored column's semantics: null = not started, 0 = paid in full.
+    let due = null;
+    if (courseFee != null) {
+      const payments = await Payment.findAll({
+        where: { studentId: studentRaw.StudentId },
+      });
+      if (payments.length > 0) {
+        const totalPaid = payments.reduce(
+          (sum, p) => sum + parseFloat(p.paidAmount || 0),
+          0
+        );
+        const totalDueAdjustment = payments.reduce(
+          (sum, p) => sum + parseFloat(p.dueAdjustmentAmount || 0),
+          0
+        );
+        due = Math.max(parseFloat(courseFee) - totalPaid - totalDueAdjustment, 0);
+      }
+    }
+
     // ✅ Send Response with filtered data (or all data if admin)
     res.status(200).json({
       ...studentData,
       courseFee, // ✅ Only return the correct fee dynamically
+      due, // ✅ Live-computed due, overrides the possibly-stale stored column
     });
   } catch (error) {
     console.error("Error fetching student details:", error);

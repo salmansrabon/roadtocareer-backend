@@ -75,7 +75,7 @@ async function sendAdminAbsentListSummary(todayLocal, mailedStudents) {
 
     await Event.create({
       event_title: "Absent Students List",
-      event_description: JSON.stringify({
+      event_description: {
         absentStudentCount: mailedStudents.length,
         // Stored as an already-formatted Dhaka wall-clock string (not left to
         // createdAt + a client-side timezone conversion) because MySQL's
@@ -84,7 +84,7 @@ async function sendAdminAbsentListSummary(todayLocal, mailedStudents) {
         // shifts createdAt by several hours when read back.
         triggeredAtDhaka: todayLocal.format("MMM DD, YYYY, hh:mm A"),
         students: mailedStudents,
-      }),
+      },
       createdAt: todayLocal.toDate(),
     });
     console.log(`[attendanceReminderJob] Logged "Absent Students List" event with ${mailedStudents.length} student(s).`);

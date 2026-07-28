@@ -113,10 +113,70 @@ const getPreviousClassDay = (classDays, referenceMoment, lookbackDays = 14) => {
     return null;
 };
 
+/**
+ * Normalizes any stored attendanceList shape (null / legacy flat array / new per-batch
+ * object) into a { [courseId]: [entries] } object. A legacy flat array is assumed to
+ * belong to `rowCourseId` — the only courseId that array could ever have been recorded under.
+ * @param {string|array|object} rawList - Raw Attendance.attendanceList value
+ * @param {string} rowCourseId - The Attendance row's own courseId column
+ * @returns {object} - { [courseId]: [entries] }
+ */
+const parseAttendanceByBatch = (rawList, rowCourseId) => {
+    let parsed;
+
+    try {
+        parsed = typeof rawList === "string" ? JSON.parse(rawList) : rawList;
+        if (typeof parsed === "string") {
+            parsed = JSON.parse(parsed); // Handle double-stringified edge case
+        }
+    } catch (err) {
+        console.warn("⚠️ Failed to parse attendanceList by batch:", err.message);
+        return {};
+    }
+
+    if (Array.isArray(parsed)) {
+        return rowCourseId ? { [rowCourseId]: parsed } : {};
+    }
+
+    return parsed && typeof parsed === "object" ? parsed : {};
+};
+
+/**
+ * Get the attendance entries recorded for one batch.
+ * `rowCourseId` and `targetCourseId` are distinct on purpose: the first only decides which
+ * batch a legacy (unkeyed) array is attributed to, the second is the batch being read.
+ * @param {string|array|object} rawList - Raw Attendance.attendanceList value
+ * @param {string} rowCourseId - The Attendance row's own courseId column
+ * @param {string} targetCourseId - The batch/course to read
+ * @returns {array}
+ */
+const getBatchEntries = (rawList, rowCourseId, targetCourseId) => {
+    const byBatch = parseAttendanceByBatch(rawList, rowCourseId);
+    return Array.isArray(byBatch[targetCourseId]) ? byBatch[targetCourseId] : [];
+};
+
+/**
+ * Set the attendance entries for one batch, preserving every other batch's entries
+ * already stored in the JSON blob.
+ * @param {string|array|object} rawList - Raw Attendance.attendanceList value (before this write)
+ * @param {string} rowCourseId - The Attendance row's own courseId column
+ * @param {string} targetCourseId - The batch/course being written
+ * @param {array} newEntries - The full updated entries array for that batch
+ * @returns {string} - JSON-stringified { [courseId]: [entries] } object
+ */
+const setBatchEntries = (rawList, rowCourseId, targetCourseId, newEntries) => {
+    const byBatch = parseAttendanceByBatch(rawList, rowCourseId);
+    byBatch[targetCourseId] = newEntries;
+    return JSON.stringify(byBatch);
+};
+
 module.exports = {
     parseAttendanceList,
     calculateAttendancePercentage,
     isTodayAClassDay,
     hasAttendedOnDate,
-    getPreviousClassDay
+    getPreviousClassDay,
+    parseAttendanceByBatch,
+    getBatchEntries,
+    setBatchEntries
 };

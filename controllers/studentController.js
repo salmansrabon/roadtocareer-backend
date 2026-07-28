@@ -16,8 +16,10 @@ const AssignmentAnswer = require("../models/AssignmentAnswer");
 const AssignmentQuestion = require("../models/AssignmentQuestion");
 const { formatDate } = require("../utils/formatDate");
 const {
-  parseAttendanceList,
   calculateAttendancePercentage,
+  parseAttendanceByBatch,
+  getBatchEntries,
+  setBatchEntries,
 } = require("../utils/attendanceHelper");
 const { calculateProfileScore } = require("../utils/profileScoreHelper");
 const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
@@ -450,7 +452,7 @@ exports.getAllStudents = async (req, res) => {
       },
       {
         model: Attendance,
-        attributes: ["attendanceList"],
+        attributes: ["attendanceList", "courseId"],
         required: false,
       },
     ];
@@ -494,7 +496,8 @@ exports.getAllStudents = async (req, res) => {
     const withAttendanceCount = (s) => {
       const plain = s.toJSON();
       const rawList = plain.Attendance?.attendanceList;
-      const parsed = parseAttendanceList(rawList);
+      const rowCourseId = plain.Attendance?.courseId;
+      const parsed = getBatchEntries(rawList, rowCourseId, rowCourseId);
       const totalClass = plain.Course?.total_class || 30;
       return {
         ...plain,
@@ -1309,14 +1312,16 @@ exports.markAttendance = async (req, res) => {
         batch_no: student.batch_no,
         StudentId: student.StudentId,
         student_name: student.student_name,
-        attendanceList: JSON.stringify([]), // Ensure it's initialized properly
+        attendanceList: JSON.stringify({}), // Ensure it's initialized properly
       });
     }
 
-    // ✅ Parse Existing Attendance List
-    let updatedAttendanceList = attendance.attendanceList
-      ? JSON.parse(attendance.attendanceList)
-      : [];
+    // ✅ Parse Existing Attendance List for the student's current batch only
+    let updatedAttendanceList = getBatchEntries(
+      attendance.attendanceList,
+      attendance.courseId,
+      student.CourseId
+    );
 
     // ✅ Check if student already marked attendance within the valid window
     const lastAttendanceEntry =
@@ -1351,9 +1356,17 @@ exports.markAttendance = async (req, res) => {
       utcTime: submittedTimeUTC.format("DD-MM-YYYY hh:mm:ss A"),
     });
 
-    // ✅ Update Attendance Table
+    // ✅ Update Attendance Table — writes only this batch's bucket, other batches untouched
     await attendance.update({
-      attendanceList: JSON.stringify(updatedAttendanceList), // Convert back to string if using LONGTEXT
+      attendanceList: setBatchEntries(
+        attendance.attendanceList,
+        attendance.courseId,
+        student.CourseId,
+        updatedAttendanceList
+      ),
+      batch_no: student.batch_no,
+      courseId: student.CourseId,
+      courseTitle: student.courseTitle,
     });
 
     // ✅ Calculate Attendance Percentage
@@ -1390,8 +1403,12 @@ exports.getAttendance = async (req, res) => {
     const course = await Course.findOne({ where: { courseId: attendance.courseId } });
     const totalClass = course ? (course.total_class || 30) : 30;
 
-    // ✅ Parse attendance list using helper function
-    const parsedAttendanceList = parseAttendanceList(attendance.attendanceList);
+    // ✅ Parse attendance list for the row's current batch only
+    const parsedAttendanceList = getBatchEntries(
+      attendance.attendanceList,
+      attendance.courseId,
+      attendance.courseId
+    );
 
     // ✅ Calculate attendance stats using helper function
     const { totalClicks, attendancePercentage } = calculateAttendancePercentage(
@@ -1405,7 +1422,7 @@ exports.getAttendance = async (req, res) => {
       courseId: attendance.courseId,
       courseTitle: attendance.courseTitle,
       batch_no: attendance.batch_no,
-      attendanceList: attendance.attendanceList, // ✅ Keep raw string format in response
+      attendanceList: JSON.stringify(parsedAttendanceList), // ✅ Current batch only, flat-array contract for the frontend
       totalClicks,
       totalClass,
       attendancePercentage,
@@ -1450,8 +1467,12 @@ exports.getAllAttendance = async (req, res) => {
     });
 
     const formattedAttendanceRecords = attendanceRecords.map((record) => {
-      // ✅ Parse attendance list using helper function
-      const parsedAttendanceList = parseAttendanceList(record.attendanceList);
+      // ✅ Parse attendance list for the row's current batch only
+      const parsedAttendanceList = getBatchEntries(
+        record.attendanceList,
+        record.courseId,
+        record.courseId
+      );
 
       // ✅ Calculate attendance stats using helper function
       const { totalClicks, attendancePercentage } =
@@ -1463,7 +1484,7 @@ exports.getAllAttendance = async (req, res) => {
         batch_no: record.batch_no,
         StudentId: record.StudentId,
         student_name: record.student_name,
-        attendanceList: record.attendanceList, // ✅ Keep as string in response
+        attendanceList: JSON.stringify(parsedAttendanceList), // ✅ Current batch only, flat-array contract
         totalClicks,
         attendancePercentage,
       };
@@ -1529,25 +1550,37 @@ exports.migrateStudent = async (req, res) => {
 
     // Lookup the course's drive folder ID
     const course = await Course.findOne({ where: { courseId: CourseId } });
+
+    // Point the attendance row at the new batch/course. Entries are NOT cleared: the
+    // attendanceList JSON is keyed by courseId, so the old batch's entries stay preserved
+    // and the new batch simply starts with no bucket (reads yield an empty list until the
+    // student attends). Migrating back to a previous batch restores its entries as-is.
+    // Re-keying happens here, while oldCourseId is still known, so a row that predates the
+    // per-batch format can never have its entries mis-attributed to the new batch.
+    // Runs before the Drive-folder check so the row can never be left pointing at the old
+    // course after the Student row has already moved on.
+    const attendanceRow = await Attendance.findOne({
+      where: { StudentId: studentId },
+    });
+    if (attendanceRow) {
+      await attendanceRow.update({
+        attendanceList: JSON.stringify(
+          parseAttendanceByBatch(attendanceRow.attendanceList, oldCourseId)
+        ),
+        batch_no,
+        courseId: CourseId,
+        courseTitle: course ? course.course_title : student.courseTitle,
+      });
+    }
+
     if (!course || !course.drive_folder_id) {
       // Handle missing folder gracefully
       return res.status(200).json({
-        message: `Attendance and quiz answer reset, but no Drive folder found for CourseId: ${CourseId}`,
+        message: `Quiz answer reset and attendance moved to the new batch, but no Drive folder found for CourseId: ${CourseId}`,
         updatedCourse: CourseId,
         updatedBatch: batch_no,
       });
     }
-
-    //Reset attendance and sync new batch/course metadata
-    await Attendance.update(
-      {
-        attendanceList: null,
-        batch_no,
-        courseId: CourseId,
-        courseTitle: course.course_title,
-      },
-      { where: { StudentId: studentId } }
-    );
 
     // Grant drive access to student
     const driveResult = await grantDriveAccess(
@@ -1579,7 +1612,7 @@ exports.migrateStudent = async (req, res) => {
                 Course: ${course.course_title}
                 ${remark ? `Remark: ${remark}` : ""}
 
-                Your attendance records and quiz answers have been reset for the new batch. You now have access to the course materials through Google Drive.
+                Your attendance for the new batch starts fresh, and your quiz answers have been reset. Your previous batch's attendance record is preserved. You now have access to the course materials through Google Drive.
 
                 If you have any questions about this migration, please contact our support team.
 
@@ -1604,7 +1637,7 @@ exports.migrateStudent = async (req, res) => {
     }
 
     return res.status(200).json({
-      message: `Attendance and quiz answer reset, Drive access granted for ${studentId}`,
+      message: `Quiz answer reset, attendance moved to the new batch, Drive access granted for ${studentId}`,
       updatedCourse: CourseId,
       updatedBatch: batch_no,
       drivePermissionId: driveResult.permissionId,
@@ -1707,27 +1740,7 @@ exports.getCourseProgress = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    // 1. Get all attendance records for the student
-    const attendanceRecords = await Attendance.findAll({
-      where: { StudentId: studentId },
-    });
-
-    // 2. Calculate total attendance count by parsing attendanceList arrays
-    let attendanceCount = 0;
-    attendanceRecords.forEach((record) => {
-      if (record.attendanceList) {
-        try {
-          const list = JSON.parse(record.attendanceList);
-          if (Array.isArray(list)) {
-            attendanceCount += list.length;
-          }
-        } catch {
-          // ignore parse errors
-        }
-      }
-    });
-
-    // 3. Fetch student's course to get totalClass and courseId
+    // 1. Fetch student's course to get totalClass and courseId
     const student = await Student.findOne({ where: { StudentId: studentId } });
     let totalClass = 30;
     let courseId = null;
@@ -1737,28 +1750,50 @@ exports.getCourseProgress = async (req, res) => {
       if (course) totalClass = course.total_class || 30;
     }
 
-    // 4. Get submitted assignment count (graded answers for this student)
-    const assignmentCount = await AssignmentAnswer.count({
-      where: { StudentId: studentId, Score: { [Op.ne]: null } },
+    // 2. Count attendance for the student's current batch only. attendanceList is keyed
+    // by courseId, so previous batches' entries are preserved but excluded here.
+    const attendance = await Attendance.findOne({
+      where: { StudentId: studentId },
     });
+    const attendanceCount = getBatchEntries(
+      attendance?.attendanceList,
+      attendance?.courseId,
+      courseId
+    ).length;
 
-    // 5. Get total assignment questions for this course
+    // 3. Count graded assignment submissions for the current batch only, scoped through
+    // the parent question's courseId (same pattern as getAnswersByStudentId).
+    const assignmentCount = courseId
+      ? await AssignmentAnswer.count({
+          where: { StudentId: studentId, Score: { [Op.ne]: null } },
+          include: [
+            {
+              model: AssignmentQuestion,
+              as: "Assignment",
+              where: { courseId },
+              required: true,
+            },
+          ],
+        })
+      : 0;
+
+    // 4. Get total assignment questions for this course
     let totalAssignments = 1; // fallback to avoid division by zero
     if (courseId) {
       const count = await AssignmentQuestion.count({ where: { courseId } });
       if (count > 0) totalAssignments = count;
     }
 
-    // 6. Calculate percentages
+    // 5. Calculate percentages
     const attendancePercentage = Math.min((attendanceCount / totalClass) * 100, 100);
     const assignmentPercentage = Math.min((assignmentCount / totalAssignments) * 100, 100);
 
-    // 7. Overall completion is the average of the two
+    // 6. Overall completion is the average of the two
     const courseCompletionPercentage = Math.round(
       (attendancePercentage + assignmentPercentage) / 2
     );
 
-    // 8. Return the results
+    // 7. Return the results
     res.json({
       attendanceCount,
       assignmentCount,
@@ -1793,8 +1828,12 @@ exports.deleteAttendance = async (req, res) => {
       return res.status(404).json({ message: "Attendance record not found." });
     }
 
-    // ✅ Parse Attendance List using helper function
-    const attendanceList = parseAttendanceList(attendance.attendanceList);
+    // ✅ Parse Attendance List for the row's current batch only
+    const attendanceList = getBatchEntries(
+      attendance.attendanceList,
+      attendance.courseId,
+      attendance.courseId
+    );
 
     if (attendanceList.length === 0) {
       return res
@@ -1811,9 +1850,14 @@ exports.deleteAttendance = async (req, res) => {
     // ✅ Remove Attendance Entry at Index
     attendanceList.splice(deleteIndex, 1);
 
-    // ✅ Update Attendance Record
+    // ✅ Update Attendance Record — other batches' buckets stay untouched
     await attendance.update({
-      attendanceList: JSON.stringify(attendanceList),
+      attendanceList: setBatchEntries(
+        attendance.attendanceList,
+        attendance.courseId,
+        attendance.courseId,
+        attendanceList
+      ),
     });
 
     // ✅ Calculate Updated Stats using helper function

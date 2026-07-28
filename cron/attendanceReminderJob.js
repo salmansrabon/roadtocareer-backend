@@ -5,7 +5,7 @@ const Attendance = require("../models/Attendance");
 const Event = require("../models/Event");
 const moment = require("moment-timezone");
 const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
-const { isTodayAClassDay, hasAttendedOnDate, getPreviousClassDay } = require("../utils/attendanceHelper");
+const { isTodayAClassDay, hasAttendedOnDate, getPreviousClassDay, getBatchEntries } = require("../utils/attendanceHelper");
 
 const TIMEZONE = "Asia/Dhaka";
 
@@ -132,7 +132,12 @@ async function runAttendanceReminderJob() {
           if (!student.User || student.User.isValid !== 1) continue;
           if (student.profession === "Job Holder") continue;
 
-          const attendanceList = student.Attendance?.attendanceList;
+          // attendanceList is keyed by courseId — only this course's entries are relevant here
+          const attendanceList = getBatchEntries(
+            student.Attendance?.attendanceList,
+            student.Attendance?.courseId,
+            student.Attendance?.courseId
+          );
           const attendedToday = hasAttendedOnDate(attendanceList, todayLocal);
           if (attendedToday) continue;
 

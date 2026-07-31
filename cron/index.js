@@ -21,11 +21,11 @@ async function registerCronJobs() {
   // day. Deliberately NOT baking a day-of-week pattern into the cron trigger
   // itself (that was computed once from a boot-time snapshot of class_days, so
   // editing class_days afterward had no effect until the server restarted).
-  // 17:59 UTC == 23:59 Asia/Dhaka (process TZ pinned to UTC in server.js)
-  cron.schedule("59 17 * * *", () => {
+  // 17:30 UTC == 23:30 Asia/Dhaka (process TZ pinned to UTC in server.js)
+  cron.schedule("30 17 * * *", () => {
     runAttendanceReminderJob();
   });
-  console.log("🕐 [cron] attendanceReminderJob scheduled @ 17:59 UTC (23:59 Asia/Dhaka) daily — actual run days follow each course's live class_days.");
+  console.log("🕐 [cron] attendanceReminderJob scheduled @ 17:30 UTC (23:30 Asia/Dhaka) daily — actual run days follow each course's live class_days.");
 }
 
 module.exports = { registerCronJobs };

@@ -379,7 +379,7 @@ exports.getStudentPayments = async (req, res) => {
 //
 exports.getUnpaidStudents = async (req, res) => {
     try {
-        const { courseId, month, year, batch_no, limit = 10, offset = 0 } = req.query;
+        const { courseId, month, year, batch_no, isMigrated, limit = 10, offset = 0 } = req.query;
 
         // 🔍 Base filter for enrolled students
         let studentFilter = {
@@ -387,6 +387,7 @@ exports.getUnpaidStudents = async (req, res) => {
         };
         if (courseId) studentFilter.CourseId = courseId;
         if (batch_no) studentFilter.batch_no = batch_no;
+        if (isMigrated !== undefined && isMigrated !== "") studentFilter.isMigrated = isMigrated === "true";
 
         // 🔍 Build dynamic where clause for payment match
         let paymentWhere = {};
@@ -410,7 +411,7 @@ exports.getUnpaidStudents = async (req, res) => {
                     [Op.notIn]: paidStudentIds
                 }
             },
-            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email", "remark", "due"],
+            attributes: ["StudentId", "student_name", "CourseId", "batch_no", "courseTitle", "mobile", "email", "remark", "due", "isMigrated"],
             include: [
                 {
                     model: Course,

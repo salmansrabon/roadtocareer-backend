@@ -30,6 +30,7 @@ const blogRoutes = require("./routes/blogRoutes");
 const eventFormRoutes = require("./routes/eventFormRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const bookRoutes = require("./routes/bookRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 // remove this block after upgrading to node 18 into cpanel
 // const fetch = require('node-fetch');
@@ -104,6 +105,7 @@ app.use("/api/blogs", blogRoutes);
 app.use("/api", eventFormRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/books", bookRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', async () => {

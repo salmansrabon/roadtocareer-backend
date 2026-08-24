@@ -5,6 +5,8 @@ const User = require("../models/User");
 const { sendEmailWithAttachment } = require("../utils/emailHelper");
 const { enqueueEmail } = require("../utils/emailQueue");
 const { getProfileGapAnalysis, buildPersonalizedReminderBody } = require("../utils/profileGapHelper");
+const { notify, notifyRoles } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 const TIMEZONE = "Asia/Dhaka";
 const PROFILE_SCORE_THRESHOLD = 70;
@@ -94,6 +96,32 @@ async function sendAdminReminderReport(studentsWithGaps, successCount, failedCou
     } else {
       console.warn("[weeklyProfileReminderJob] sendEmailWithAttachment returned false for admin summary.");
     }
+
+    // 🔔 Summarised in-app notification for admins (SRS 24) — the in-app
+    // counterpart of the CSV email above. One row per admin, NOT one per student.
+    // Scoped to role "admin", matching the email's recipient list.
+    //
+    // Skipped when nobody qualifies, so admins never get a "0 students" bell.
+    // (The email above has no such guard — that is pre-existing behaviour and is
+    // deliberately left alone; only the notification is gated here. Compare
+    // attendanceReminderJob, which early-returns the whole summary at zero.)
+    if (studentsWithGaps.length === 0) {
+      console.log("[weeklyProfileReminderJob] No students with gaps — skipping admin in-app summary.");
+      return;
+    }
+
+    await notifyRoles(["admin"], {
+      type: NOTIFICATION_TYPES.PROFILE_INCOMPLETE_SUMMARY,
+      title: `${studentsWithGaps.length} student${studentsWithGaps.length === 1 ? "" : "s"} with incomplete profiles`,
+      body: `${studentsWithGaps.length} student${studentsWithGaps.length === 1 ? "" : "s"} scored under ${PROFILE_SCORE_THRESHOLD}% as of ${reportDateStr}. ` +
+        `${successCount} reminder${successCount === 1 ? "" : "s"} sent, ${failedCount} failed. The full list was emailed as a CSV.`,
+      link: "/students/list",
+      actorUsername: null,
+      actorName: "Road to SDET",
+      entityType: ENTITY_TYPES.PROFILE,
+      entityId: `summary:${moment.tz(TIMEZONE).format("YYYY-MM-DD")}`,
+      metadata: { studentCount: studentsWithGaps.length, successCount, failedCount, date: reportDateStr },
+    });
   } catch (err) {
     console.error("[weeklyProfileReminderJob] Failed to send admin summary:", err);
   }
@@ -150,6 +178,40 @@ async function runWeeklyProfileReminderJob() {
     );
     const successCount = sendResults.filter(Boolean).length;
     const failedCount = sendResults.length - successCount;
+
+    // 🔔 In-app notification per student (SRS 24), the counterpart of the email
+    // above. ONE notify() call with per-recipient bodies rather than one call per
+    // student: this fans out to 500+ students, and N separate calls would be N
+    // round-trips against a 5-connection pool. Sent regardless of email outcome —
+    // a bounced address shouldn't cost the student the in-app nudge.
+    await notify({
+      recipients: studentsWithGaps.map(({ student, gap }) => {
+        // gap.currentScore is recomputed here, so prefer it over the stored
+        // students.profile_score column, which can be stale between recalcs.
+        const score = gap?.currentScore ?? student.profile_score;
+        const sections = [...new Set((gap?.missingItems || []).map((i) => i.section))].slice(0, 3);
+        return {
+          username: student.StudentId,
+          body: `Your profile is ${score}% complete` +
+            `${gap?.pointsToThreshold ? ` — ${gap.pointsToThreshold} points from ${PROFILE_SCORE_THRESHOLD}%` : ""}.` +
+            `${sections.length ? ` Still missing: ${sections.join(", ")}.` : ""}` +
+            ` Complete it to appear in QA Talent and get placement support.`,
+          metadata: {
+            profileScore: score,
+            threshold: PROFILE_SCORE_THRESHOLD,
+            pointsToThreshold: gap?.pointsToThreshold ?? null,
+          },
+        };
+      }),
+      type: NOTIFICATION_TYPES.PROFILE_INCOMPLETE,
+      title: "Complete your profile",
+      link: "/profile",
+      actorUsername: null,
+      actorName: "Road to SDET",
+      entityType: ENTITY_TYPES.PROFILE,
+      // One reminder per weekly run, so a same-day re-run can't duplicate it.
+      entityId: `weekly:${moment.tz(TIMEZONE).format("YYYY-MM-DD")}`,
+    });
 
     await sendAdminReminderReport(studentsWithGaps, successCount, failedCount, reportDateStr);
 

@@ -2,6 +2,7 @@ const cron = require("node-cron");
 const { runAttendanceReminderJob } = require("./attendanceReminderJob");
 const { runExperienceRecalcJob } = require("./experienceRecalcJob");
 const { runWeeklyProfileReminderJob } = require("./weeklyProfileReminderJob");
+const { runNotificationPruneJob } = require("./notificationPruneJob");
 
 async function registerCronJobs() {
   // 06:00 UTC == 12:00 Asia/Dhaka (process TZ pinned to UTC in server.js; Bangladesh has no DST).
@@ -26,6 +27,12 @@ async function registerCronJobs() {
     runAttendanceReminderJob();
   });
   console.log("🕐 [cron] attendanceReminderJob scheduled @ 17:30 UTC (23:30 Asia/Dhaka) daily — actual run days follow each course's live class_days.");
+
+  // 20:00 UTC == 02:00 Asia/Dhaka (process TZ pinned to UTC in server.js; Bangladesh has no DST).
+  cron.schedule("0 20 * * *", () => {
+    runNotificationPruneJob();
+  });
+  console.log("🕐 [cron] notificationPruneJob scheduled @ 20:00 UTC (02:00 Asia/Dhaka) daily.");
 }
 
 module.exports = { registerCronJobs };

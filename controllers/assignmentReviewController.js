@@ -2,7 +2,9 @@ const AssignmentAnswer = require('../models/AssignmentAnswer');
 const AssignmentQuestion = require('../models/AssignmentQuestion');
 const Student = require('../models/Student');
 const User = require('../models/User');
-const { sendEmail } = require("../utils/emailHelper");
+const { enqueueEmail } = require("../utils/emailQueue");
+const { notify, wasRecentlyNotified } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 const updateAssignmentScore = async (req, res) => {
   const { assignmentId } = req.params;
@@ -46,8 +48,25 @@ const updateAssignmentScore = async (req, res) => {
       include: [{ model: User, attributes: ["email", "isValid"] }]
     });
 
-    if (student?.User?.email && student.User.isValid === 1) {
-      const assignmentTitle = answer.Assignment?.Assignment_Title || "Your Assignment";
+    // Hoisted above the email-validity check so the in-app notification below can
+    // use them regardless of whether the student has a valid email on file.
+    const assignmentTitle = answer.Assignment?.Assignment_Title || "Your Assignment";
+    // Reviewing comments without touching the score is a supported path (see the
+    // `Score !== undefined` guard above), so fall back to the stored score rather
+    // than printing "Score: undefined" to the student.
+    const finalScore = Score !== undefined ? Score : answer.Score;
+
+    // Suppress duplicates across BOTH channels: an admin fixing a typo and saving
+    // three times would otherwise send the student three notifications and three
+    // emails. Routine workflow, not an edge case.
+    const alreadyNotified = await wasRecentlyNotified({
+      recipients: StudentId,
+      type: NOTIFICATION_TYPES.ASSIGNMENT_REVIEWED,
+      entityType: ENTITY_TYPES.ASSIGNMENT_ANSWER,
+      entityId: answer.id,
+    });
+
+    if (!alreadyNotified && student?.User?.email && student.User.isValid === 1) {
       const subject = `Assignment Reviewed - ${assignmentTitle}`;
       const emailComments = Array.isArray(NewComments) && NewComments.length > 0 ? NewComments : Comments;
       const commentText = Array.isArray(emailComments) ? emailComments.join("\n") : emailComments;
@@ -56,7 +75,7 @@ const updateAssignmentScore = async (req, res) => {
 
 Your assignment titled "${assignmentTitle}" has been reviewed.
 
-✅ Score: ${Score} / ${answer.Assignment?.TotalScore}
+✅ Score: ${finalScore ?? "-"} / ${answer.Assignment?.TotalScore ?? "-"}
 💬 Comments: ${commentText || "No comments"}
 
 Please log in to your dashboard to view the details.
@@ -64,9 +83,33 @@ Please log in to your dashboard to view the details.
 Regards,  
 Road to SDET Team`;
 
-      await sendEmail(student.User.email, subject, text);
-      console.log(`📧 Email sent to ${student.User.email}`);
+      enqueueEmail({
+        to: student.User.email,
+        subject,
+        body: text,
+        meta: { assignmentId, StudentId },
+      }).then((sent) => {
+        if (!sent) console.error(`[assignment] Review email failed for ${student.User.email}`, { assignmentId, StudentId });
+      });
     }
+
+    // 🔔 In-app notification for the student (SRS 24). Never throws.
+    if (!alreadyNotified) await notify({
+      recipients: StudentId,
+      type: NOTIFICATION_TYPES.ASSIGNMENT_REVIEWED,
+      title: "Assignment reviewed",
+      body: `Your assignment "${assignmentTitle}" has been reviewed. Score: ${finalScore ?? "-"} / ${answer.Assignment?.TotalScore ?? "-"}.`,
+      link: `/assignment/summary/mysubmission`,
+      actorUsername: req.user?.username || null,
+      actorName: req.user?.username || null,
+      entityType: ENTITY_TYPES.ASSIGNMENT_ANSWER,
+      entityId: answer.id,
+      metadata: {
+        assignmentId: Number(assignmentId),
+        score: finalScore ?? null,
+        totalScore: answer.Assignment?.TotalScore ?? null,
+      },
+    });
 
     res.status(200).json({
       message: "Assignment score and comments updated successfully.",

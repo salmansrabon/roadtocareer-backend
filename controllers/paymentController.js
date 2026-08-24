@@ -5,6 +5,8 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const { Op, Sequelize } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
+const { notify } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 Payment.belongsTo(Student, { foreignKey: "studentId", targetKey: "StudentId" });
 
 exports.addPayment = async (req, res) => {
@@ -82,6 +84,31 @@ You can log in to the student portal (${frontendUrl}/dashboard/student) anytime 
 Regards,
 Road to SDET Team`
         );
+
+        // 🔔 In-app notification for the student (SRS 24). Single recipient, so an
+        // inline await is fine. notify() never throws — a notification failure must
+        // not fail the payment record.
+        const outstanding = remainingBalance >= 0 ? remainingBalance : 0;
+        await notify({
+            recipients: studentId,
+            type: NOTIFICATION_TYPES.PAYMENT_RECORDED,
+            title: "Payment received",
+            body: `Your payment of ${paidAmount} Tk for ${month} has been recorded.` +
+                (outstanding > 0 ? ` Remaining balance: ${outstanding} Tk.` : " No balance remaining."),
+            link: "/dashboard/student",
+            actorUsername: req.user?.username || null,
+            actorName: req.user?.username || null,
+            entityType: ENTITY_TYPES.PAYMENT,
+            entityId: newPayment.id,
+            metadata: {
+                paymentId: newPayment.id,
+                paidAmount,
+                month,
+                installmentNumber,
+                remainingBalance: outstanding,
+                courseId,
+            },
+        });
 
         return res.status(201).json({
             success: true,

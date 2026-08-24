@@ -6,6 +6,8 @@ const Event = require("../models/Event");
 const moment = require("moment-timezone");
 const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
 const { isTodayAClassDay, hasAttendedOnDate, getPreviousClassDay, getBatchEntries } = require("../utils/attendanceHelper");
+const { notify, notifyRoles } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 const TIMEZONE = "Asia/Dhaka";
 
@@ -88,6 +90,29 @@ async function sendAdminAbsentListSummary(todayLocal, mailedStudents) {
       createdAt: todayLocal.toDate(),
     });
     console.log(`[attendanceReminderJob] Logged "Absent Students List" event with ${mailedStudents.length} student(s).`);
+
+    // 🔔 Summarised in-app notification for admins (SRS 24) — the in-app
+    // counterpart of the CSV email above. One row per admin, NOT one per absent
+    // student; the per-student notifications go to the students themselves.
+    // Scoped to role "admin" only, matching the recipient list of the email.
+    const batches = [...new Set(mailedStudents.map((s) => s.batch_no).filter(Boolean))];
+    await notifyRoles(["admin"], {
+      type: NOTIFICATION_TYPES.ATTENDANCE_ABSENT_SUMMARY,
+      title: `${mailedStudents.length} student${mailedStudents.length === 1 ? "" : "s"} absent`,
+      body: `${mailedStudents.length} student${mailedStudents.length === 1 ? "" : "s"} missed two consecutive classes as of ${dateStr}` +
+        `${batches.length ? ` (batch ${batches.join(", ")})` : ""}. The full list was emailed as a CSV.`,
+      link: "/events/list",
+      actorUsername: null,
+      actorName: "Road to SDET",
+      entityType: ENTITY_TYPES.ATTENDANCE,
+      // One summary per day, so a same-day re-run can't duplicate it.
+      entityId: `summary:${todayLocal.format("YYYY-MM-DD")}`,
+      metadata: {
+        absentStudentCount: mailedStudents.length,
+        date: dateStr,
+        batches,
+      },
+    });
   } catch (err) {
     console.error("[attendanceReminderJob] Failed to send admin summary:", err);
   }
@@ -166,6 +191,27 @@ async function runAttendanceReminderJob() {
           } catch (emailErr) {
             console.error(`[attendanceReminderJob] Failed sending to ${student.email}:`, emailErr);
           }
+
+          // 🔔 In-app notification (SRS 24). Outside the email try/catch on purpose:
+          // a student with a bad or missing email should still see this in-app.
+          // No req.user here (cron), so the actor is the system.
+          await notify({
+            recipients: student.StudentId,
+            type: NOTIFICATION_TYPES.ATTENDANCE_ABSENT,
+            title: "You missed the last two classes",
+            body: `You were marked absent for ${course.course_title} on ${previousClassMoment.format("DD-MM-YYYY")} and ${todayLocal.format("DD-MM-YYYY")}. Please attend the next class.`,
+            link: "/attendance",
+            actorUsername: null,
+            actorName: "Road to SDET",
+            entityType: ENTITY_TYPES.ATTENDANCE,
+            // Scoped to this course+date so the same run can't double-notify.
+            entityId: `${course.courseId}:${todayLocal.format("YYYY-MM-DD")}`,
+            metadata: {
+              courseId: course.courseId,
+              courseTitle: course.course_title,
+              missedDates: [previousClassMoment.format("DD-MM-YYYY"), todayLocal.format("DD-MM-YYYY")],
+            },
+          });
         }
       } catch (courseErr) {
         console.error(`[attendanceReminderJob] Error processing course ${course.courseId}:`, courseErr);

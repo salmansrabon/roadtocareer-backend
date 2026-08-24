@@ -7,6 +7,8 @@ const BookTopicStudentAccess = require("../models/BookTopicStudentAccess");
 const Student = require("../models/Student");
 const User = require("../models/User");
 const { enqueueEmail } = require("../utils/emailQueue");
+const { notify, notifyStudentsOfCourse } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 // Resolves the book a topic belongs to (all topics unlocked from one admin request belong
 // to the same book), used to build the notification email link/title.
@@ -283,6 +285,23 @@ exports.unlockTopics = async (req, res) => {
             const book = await resolveBookFromTopicId(topicIds[0]);
             if (book) {
                 notification = await queueUnlockedTopicsNotification(courseIds, book);
+
+                // 🔔 In-app notification per affected batch (SRS 24). Fan-out can be
+                // 100+ students per course, so this runs after access is already
+                // committed and never throws.
+                for (const courseId of courseIds) {
+                    await notifyStudentsOfCourse(courseId, {
+                        type: NOTIFICATION_TYPES.EBOOK_ACCESS_GRANTED,
+                        title: "New book content unlocked",
+                        body: `${topicIds.length} new topic${topicIds.length === 1 ? "" : "s"} unlocked in "${book.title}".`,
+                        link: `/book/${book.slug}`,
+                        actorUsername: req.user?.username || null,
+                        actorName: req.user?.username || null,
+                        entityType: ENTITY_TYPES.BOOK_TOPIC,
+                        entityId: topicIds[0],
+                        metadata: { bookSlug: book.slug, topicIds, courseId },
+                    });
+                }
             }
         } catch (notifyErr) {
             console.error("[unlockTopics] Error resolving book for student notification:", notifyErr);
@@ -399,6 +418,21 @@ exports.unlockTopicsForStudents = async (req, res) => {
             const book = await resolveBookFromTopicId(topicIds[0]);
             if (book) {
                 notification = await queueStudentUnlockNotification(studentIds, book);
+
+                // 🔔 In-app notification (SRS 24). studentIds ARE usernames
+                // (Student.StudentId === users.username), so no lookup is needed.
+                await notify({
+                    recipients: studentIds,
+                    type: NOTIFICATION_TYPES.EBOOK_ACCESS_GRANTED,
+                    title: "New book content unlocked",
+                    body: `${topicIds.length} new topic${topicIds.length === 1 ? "" : "s"} unlocked for you in "${book.title}".`,
+                    link: `/book/${book.slug}`,
+                    actorUsername: req.user?.username || null,
+                    actorName: req.user?.username || null,
+                    entityType: ENTITY_TYPES.BOOK_TOPIC,
+                    entityId: topicIds[0],
+                    metadata: { bookSlug: book.slug, topicIds },
+                });
             }
         } catch (notifyErr) {
             console.error("[unlockTopicsForStudents] Error resolving book for student notification:", notifyErr);

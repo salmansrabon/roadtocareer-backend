@@ -4,6 +4,8 @@ const Student = require('../models/Student');
 const User = require('../models/User');
 const { Op } = require('sequelize');
 const { sendEmail } = require("../utils/emailHelper");
+const { notifyStudentsOfCourse } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 const createAssignmentQuestion = async (req, res) => {
     try {
@@ -69,6 +71,26 @@ Team, Road to SDET`;
             } catch (emailError) {
                 console.error("❌ Error sending emails in background:", emailError);
             }
+
+            // 🔔 In-app notification for every enrolled student on the course (SRS 24).
+            // Inside setImmediate deliberately: a batch is ~40-95 enrolled students,
+            // and that fan-out must not sit on the request path. Never throws.
+            await notifyStudentsOfCourse(courseId, {
+                type: NOTIFICATION_TYPES.ASSIGNMENT_POSTED,
+                title: "New assignment posted",
+                body: `${req.body.Assignment_Title}${req.body.topic_name ? ` (${req.body.topic_name})` : ""} — due ${submissionDeadline}.`,
+                link: `/assignment/submit/${newAssignment.id}`,
+                actorUsername: req.user?.username || null,
+                actorName: req.user?.username || null,
+                entityType: ENTITY_TYPES.ASSIGNMENT_QUESTION,
+                entityId: newAssignment.id,
+                metadata: {
+                    assignmentId: newAssignment.id,
+                    courseId,
+                    batchNo: newAssignment.batch_no,
+                    submissionDate: newAssignment.SubmissionDate,
+                },
+            });
         });
 
     } catch (error) {

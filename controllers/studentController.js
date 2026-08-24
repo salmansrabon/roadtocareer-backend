@@ -10,6 +10,8 @@ const bcrypt = require("bcryptjs");
 const { Op, Sequelize } = require("sequelize");
 const moment = require("moment-timezone");
 const { sendEmail } = require("../utils/emailHelper");
+const { notify } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 const sequelize = require("../config/db");
 const { grantDriveAccess } = require("../utils/googleDriveHelper");
 const AssignmentAnswer = require("../models/AssignmentAnswer");
@@ -1180,6 +1182,26 @@ exports.updateStudent = async (req, res) => {
         );
         // Don't fail the update if email fails, just log the error
       }
+
+      // 🔔 In-app notification (SRS 24). Hooked on certificateJustEnabled rather
+      // than on saveCertificate, because this flag flip is the single point BOTH
+      // paths funnel through — the automatic one (student hits /certificate while
+      // eligible) and the admin one (ticking get_certificate on the student page).
+      // It is edge-triggered by the `!student.get_certificate &&` guard above, so
+      // it fires exactly once. Outside the email try/catch so a mail failure does
+      // not skip it. This route has no authenticateUser, so there is no actor.
+      await notify({
+        recipients: studentId,
+        type: NOTIFICATION_TYPES.CERTIFICATE_READY,
+        title: "Your certificate is ready",
+        body: `Congratulations ${student.student_name || student_name || ""}! Your course certificate is now available to view and download.`.replace(/\s+/g, " ").trim(),
+        link: "/certificate",
+        actorUsername: null,
+        actorName: "Road to SDET",
+        entityType: ENTITY_TYPES.CERTIFICATE,
+        entityId: studentId,
+        metadata: { batchNo: student.batch_no || null },
+      });
     }
 
     return res.status(200).json({

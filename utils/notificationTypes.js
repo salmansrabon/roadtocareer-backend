@@ -24,6 +24,10 @@ const NOTIFICATION_TYPES = Object.freeze({
     // One row per admin, NOT one per absent student.
     ATTENDANCE_ABSENT_SUMMARY: "attendance_absent_summary",
 
+    // → every student in a batch/course when the admin finishes uploading a class
+    // recording to Drive (fan-out; mirrors the existing new-video email)
+    CLASS_VIDEO_UPLOADED: "class_video_uploaded",
+
     // → students under the profile-score threshold (one per student, personalised
     // with their own score; mirrors their weekly reminder email)
     PROFILE_INCOMPLETE: "profile_incomplete",
@@ -43,6 +47,7 @@ const ENTITY_TYPES = Object.freeze({
     BOOK_TOPIC: "book_topic",
     ATTENDANCE: "attendance",
     PROFILE: "profile",
+    CLASS_RESOURCE: "class_resource",
 });
 
 module.exports = { NOTIFICATION_TYPES, ENTITY_TYPES };

@@ -4,6 +4,8 @@ const crypto = require("crypto");
 const path = require("path");
 const { listFolderContents: listFolderHelper, uploadFileToFolder } = require("../utils/googleDriveHelper");
 const { enqueueEmail } = require("../utils/emailQueue");
+const { notifyStudentsOfCourse } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 const Gallery = require("../models/Gallery");
 const Student = require("../models/Student");
 const User = require("../models/User");
@@ -230,10 +232,11 @@ exports.deleteGoogleDriveLink = async (req, res) => {
     }
 };
 
-// ✅ Best-effort, non-blocking: notify every isValid=true student in the batch that a new class video is up.
-// Delivery + per-email retry are handled entirely by the background emailQueue, so this returns fast and never
-// delays the admin's upload response. Only the (quick) student lookup is awaited.
-const notifyBatchStudentsOfNewVideo = async (courseId) => {
+// ✅ Best-effort, non-blocking: notify every isValid=true student in the batch that a new class video is up,
+// by email AND by in-app notification.
+// Email delivery + per-email retry are handled entirely by the background emailQueue, and notifyStudentsOfCourse()
+// never throws, so this returns fast and never delays (or fails) the admin's upload response.
+const notifyBatchStudentsOfNewVideo = async (courseId, { actorUsername = null, file = null } = {}) => {
     try {
         const students = await Student.findAll({
             where: { CourseId: courseId },
@@ -258,6 +261,25 @@ Team, Road to SDET`;
 
             enqueueEmail({ to: student.email, subject, body, meta: { courseId, studentId: student.StudentId } });
         }
+
+        // In-app notification (SRS 24). Recipients are resolved independently by
+        // notifyStudentsOfCourse, which additionally requires isEnrolled=true — so this set can be
+        // slightly narrower than the email set above. That stricter filter is what every other
+        // in-app type uses; keep them consistent rather than matching the looser email query.
+        //
+        // Links to the list page, not /classResources/watch/<id>: Drive is usually still rendering
+        // the file at this point, so a deep link would land on a video that won't play yet.
+        await notifyStudentsOfCourse(courseId, {
+            type: NOTIFICATION_TYPES.CLASS_VIDEO_UPLOADED,
+            title: "New class recording uploaded",
+            body: "Today's class video is up. If it is still processing, please check again in 10-15 minutes.",
+            link: "/classResources/classResourcesList",
+            actorUsername,
+            actorName: actorUsername,
+            entityType: ENTITY_TYPES.CLASS_RESOURCE,
+            entityId: file?.id || null,
+            metadata: { courseId, fileId: file?.id || null, fileName: file?.name || null },
+        });
     } catch (error) {
         console.error("[uploadVideo] Error notifying batch students of new video:", error);
     }
@@ -296,7 +318,10 @@ exports.uploadVideo = [
             if (result.success) {
                 res.status(201).json({ success: true, file: result.file });
                 if (courseId) {
-                    notifyBatchStudentsOfNewVideo(courseId).catch((err) => {
+                    notifyBatchStudentsOfNewVideo(courseId, {
+                        actorUsername: req.user?.username || null,
+                        file: result.file,
+                    }).catch((err) => {
                         console.error("[uploadVideo] Unexpected error notifying batch students:", err);
                     });
                 }
@@ -458,7 +483,10 @@ exports.completeVideoUpload = async (req, res) => {
             const courseId = session.courseId;
             res.status(201).json({ success: true, file: result.file });
             if (courseId) {
-                notifyBatchStudentsOfNewVideo(courseId).catch((err) => {
+                notifyBatchStudentsOfNewVideo(courseId, {
+                    actorUsername: req.user?.username || null,
+                    file: result.file,
+                }).catch((err) => {
                     console.error("[completeVideoUpload] Unexpected error notifying batch students:", err);
                 });
             }

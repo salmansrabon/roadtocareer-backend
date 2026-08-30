@@ -109,16 +109,17 @@ app.use("/api/notifications", notificationRoutes);
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerDocument = require("./config/swagger");
+const swaggerAuth = require("./middlewares/swaggerAuth");
 
-// ✅ Swagger API Documentation
-app.use("/swagger", swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+// ✅ Swagger API Documentation (Protected with Basic Auth)
+app.use("/swagger", swaggerAuth, swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
     customSiteTitle: "Road to SDET API Documentation",
     swaggerOptions: {
         persistAuthorization: true,
     }
 }));
 
-app.get("/swagger.json", (req, res) => {
+app.get("/swagger.json", swaggerAuth, (req, res) => {
     res.setHeader("Content-Type", "application/json");
     res.send(swaggerDocument);
 });

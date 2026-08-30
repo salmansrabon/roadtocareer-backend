@@ -33,6 +33,7 @@
     "openai": "^5.1.1",
     "path": "^0.12.7",
     "pdf-parse": "^1.1.1",
-    "sequelize": "^6.37.5"
+    "sequelize": "^6.37.5",
+    "swagger-ui-express": "^5.0.1"
   }
 }

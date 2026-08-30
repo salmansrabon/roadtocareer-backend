@@ -107,6 +107,22 @@ app.use("/api/events", eventRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/notifications", notificationRoutes);
 
+const swaggerUi = require("swagger-ui-express");
+const swaggerDocument = require("./config/swagger");
+
+// ✅ Swagger API Documentation
+app.use("/swagger", swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+    customSiteTitle: "Road to SDET API Documentation",
+    swaggerOptions: {
+        persistAuthorization: true,
+    }
+}));
+
+app.get("/swagger.json", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    res.send(swaggerDocument);
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', async () => {
     console.log(`Server running on port ${PORT}`),

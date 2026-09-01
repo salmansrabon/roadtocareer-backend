@@ -6,7 +6,7 @@ const { authenticateUser, requireAdmin } = require("../middlewares/authMiddlewar
 router.post("/create",authenticateUser, requireAdmin, mcqConfigController.createMcqConfig);
 router.get("/:CourseId", mcqConfigController.getMcqConfigByCourse);
 router.get("/", authenticateUser,requireAdmin, mcqConfigController.getMcqConfigByCourse);
-router.put("/:CourseId", mcqConfigController.updateMcqConfigByCourse);
-router.delete("/:CourseId", mcqConfigController.deleteMcqConfigByCourse);
+router.put("/:CourseId", authenticateUser, requireAdmin, mcqConfigController.updateMcqConfigByCourse);
+router.delete("/:CourseId", authenticateUser, requireAdmin, mcqConfigController.deleteMcqConfigByCourse);
 
 module.exports = router;

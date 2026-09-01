@@ -3,8 +3,15 @@ const { studentSignup, getAllStudents, getAlumniList, getStudentById, updateStud
 const { searchQATalent, aiSearchQATalent } = require("../controllers/qaTalentController");
 const { addRemark, updateRemark, deleteRemark, getRemarks } = require("../controllers/remarkController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
+const { rateLimit } = require("../middlewares/rateLimiter");
 
 const router = express.Router();
+
+// AI-backed / outbound-email endpoints that must stay public (they power the
+// public /qa-talent page) but are billable or otherwise abusable — rate
+// limited per IP instead of authenticated.
+const aiSearchLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
+const contactEmailLimiter = rateLimit({ windowMs: 60 * 1000, max: 5 });
 
 // ✅ Student Signup Route
 router.post("/signup", studentSignup);
@@ -12,12 +19,12 @@ router.get("/list", authenticateUser, requireAdmin, getAllStudents);
 router.get("/alumni", authenticateUser, getAlumniList);
 router.get("/public-list", getQaTalent);
 router.get("/search-talent", searchQATalent);
-router.post("/ai-search", aiSearchQATalent);
-router.post("/send-contact-email", sendContactEmail);
-router.get("/:studentId", getStudentById);
-router.put("/:studentId", updateStudent);
-router.delete("/:studentId", deleteStudentById);
-router.post("/mark-attendance", markAttendance);
+router.post("/ai-search", aiSearchLimiter, aiSearchQATalent);
+router.post("/send-contact-email", contactEmailLimiter, sendContactEmail);
+router.get("/:studentId", authenticateUser, getStudentById);
+router.put("/:studentId", authenticateUser, updateStudent);
+router.delete("/:studentId", authenticateUser, requireAdmin, deleteStudentById);
+router.post("/mark-attendance", authenticateUser, markAttendance);
 router.get("/attendance/:studentId", authenticateUser, getAttendance);
 router.get("/list/attendance", authenticateUser, requireAdmin, getAllAttendance);
 router.delete("/attendance/:studentId/:index", authenticateUser, requireAdmin, deleteAttendance);

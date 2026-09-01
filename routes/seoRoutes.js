@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const SeoController = require('../controllers/seoController');
+const { authenticateUser, requireAdmin } = require('../middlewares/authMiddleware');
 
 // Public routes (no authentication required)
 // Get SEO data by route - used by frontend pages
@@ -21,15 +22,15 @@ router.get('/', SeoController.getAllSeo);
 router.get('/:id', SeoController.getSeoById);
 
 // Create new SEO record
-router.post('/', SeoController.createSeo);
+router.post('/', authenticateUser, requireAdmin, SeoController.createSeo);
 
 // Update SEO record
-router.put('/:id', SeoController.updateSeo);
+router.put('/:id', authenticateUser, requireAdmin, SeoController.updateSeo);
 
 // Bulk update SEO records
-router.put('/bulk/update', SeoController.bulkUpdateSeo);
+router.put('/bulk/update', authenticateUser, requireAdmin, SeoController.bulkUpdateSeo);
 
 // Delete SEO record
-router.delete('/:id', SeoController.deleteSeo);
+router.delete('/:id', authenticateUser, requireAdmin, SeoController.deleteSeo);
 
 module.exports = router;

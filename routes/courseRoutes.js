@@ -7,7 +7,7 @@ const { authenticateUser, requireAdmin } = require("../middlewares/authMiddlewar
 router.post("/create",authenticateUser,requireAdmin, createCourse);
 router.get("/list", getCoursesList);
 router.get("/:courseId", getCourseDetails);
-router.put("/update/:courseId", updateCourse);
-router.delete("/delete/:courseId", deleteCourse);
+router.put("/update/:courseId", authenticateUser, requireAdmin, updateCourse);
+router.delete("/delete/:courseId", authenticateUser, requireAdmin, deleteCourse);
 
 module.exports = router;

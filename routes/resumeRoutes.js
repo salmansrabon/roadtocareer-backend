@@ -3,6 +3,7 @@ const router = express.Router();
 const resumeController = require("../controllers/resumeController");
 const { getAllResumeEvaluations, deleteResumeEvaluation } = resumeController;
 const { authenticateUser } = require("../middlewares/authMiddleware");
+const { rateLimit } = require("../middlewares/rateLimiter");
 
 const multer = require("multer");
 const path = require("path");
@@ -20,7 +21,10 @@ const upload = multer({
 });
 
 
-router.post("/evaluate", upload.single("resume"), resumeController.evaluateResume);
+// Public by design (job-seeker resume check on the public job-detail page);
+// rate limited per IP since it's a billable OpenAI call.
+const evaluateLimiter = rateLimit({ windowMs: 60 * 1000, max: 5 });
+router.post("/evaluate", evaluateLimiter, upload.single("resume"), resumeController.evaluateResume);
 router.get("/evaluations", authenticateUser, getAllResumeEvaluations);
 router.delete("/evaluations/:id", authenticateUser, deleteResumeEvaluation);
 

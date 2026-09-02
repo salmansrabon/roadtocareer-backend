@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
 const path = require("path");
 
 const authRoutes = require("./routes/authRoutes");
@@ -57,6 +58,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(cookieParser()); // TASK-47: reads the httpOnly auth cookie into req.cookies
 app.use(express.json({ limit: "50mb" })); // Increased limit for certificate images
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 

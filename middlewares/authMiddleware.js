@@ -2,7 +2,10 @@ const jwt = require("jsonwebtoken");
 
 // ✅ Middleware to Authenticate User
 exports.authenticateUser = (req, res, next) => {
-    const token = req.headers.authorization?.split(" ")[1];
+    // TASK-47: accept the token from either the Authorization Bearer header
+    // (existing clients, unaffected) or the httpOnly cookie set at login,
+    // preferring the header so nothing changes for current callers.
+    const token = req.headers.authorization?.split(" ")[1] || req.cookies?.token;
     if (!token) return res.status(403).json({ message: "Unauthorized" });
 
     jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {

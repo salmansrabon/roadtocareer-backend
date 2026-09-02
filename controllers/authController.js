@@ -5,6 +5,35 @@ const crypto = require("crypto");
 const { Op } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
 
+// TASK-47: dual-write the JWT into an httpOnly cookie alongside the existing
+// response-body token (backward compatible — Bearer-header clients are
+// unaffected, see authMiddleware.authenticateUser).
+//
+// `secure` is derived from the actual request (`req.secure`), NOT
+// `process.env.NODE_ENV` — this project's local `.env` sets
+// `NODE_ENV=production` even for local dev (see env.template), so gating on
+// NODE_ENV would mark the cookie Secure locally too and browsers silently
+// refuse to store/send a Secure cookie over plain http://localhost.
+// `req.secure` reflects the real scheme in both environments because
+// `app.js` already sets `app.set("trust proxy", true)`, so it honors
+// `X-Forwarded-Proto` behind the production reverse proxy.
+//
+// `domain` is left undefined in local dev (defaults to the exact request
+// host) and set via COOKIE_DOMAIN in production to share the cookie across
+// the frontend/API subdomains (see env.template).
+const AUTH_COOKIE_NAME = "token";
+const AUTH_COOKIE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // matches the JWT's 12h expiry
+
+function getAuthCookieOptions(req) {
+    return {
+        httpOnly: true,
+        secure: req.secure,
+        sameSite: "lax",
+        domain: process.env.COOKIE_DOMAIN || undefined,
+        path: "/",
+    };
+}
+
 // ✅ Register User
 exports.register = async (req, res) => {
     try {
@@ -68,6 +97,10 @@ exports.login = async (req, res) => {
         // ✅ Generate JWT Token
         const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET, { expiresIn: "12h" });
 
+        // TASK-47: dual-write — still returned in the body exactly as before,
+        // ALSO set as an httpOnly cookie for the (currently unused) edge/SSR path.
+        res.cookie(AUTH_COOKIE_NAME, token, { ...getAuthCookieOptions(req), maxAge: AUTH_COOKIE_MAX_AGE_MS });
+
         res.json({
             token,
             user: { id: user.id, username: user.username, email: user.email, role: user.role }
@@ -76,6 +109,15 @@ exports.login = async (req, res) => {
         console.error("Error logging in:", error);
         res.status(500).json({ message: "Internal server error" });
     }
+};
+
+// TASK-47: clears the httpOnly auth cookie. Frontend localStorage/Bearer logout
+// is unchanged (still purely client-side) — this only clears what client JS
+// cannot reach on its own. No auth required: a caller with no/expired/invalid
+// cookie should still be able to reach this and get a clean 200.
+exports.logout = (req, res) => {
+    res.clearCookie(AUTH_COOKIE_NAME, getAuthCookieOptions(req));
+    res.json({ message: "Logged out" });
 };
 
 

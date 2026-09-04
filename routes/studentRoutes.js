@@ -21,7 +21,18 @@ router.get("/public-list", getQaTalent);
 router.get("/search-talent", searchQATalent);
 router.post("/ai-search", aiSearchLimiter, aiSearchQATalent);
 router.post("/send-contact-email", contactEmailLimiter, sendContactEmail);
-router.get("/:studentId", authenticateUser, getStudentById);
+// Deliberately public (no authenticateUser): getStudentById does its own
+// manual, optional token check and field-level redaction (mobile/email
+// gated by isMobilePublic/isEmailPublic unless the caller is the owner or
+// an admin/teacher) — it was built to serve both the authenticated profile
+// view AND the public /portfolio/[slug] page from one endpoint. TASK-46's
+// TASK-48 security pass (commit c117a67) added authenticateUser here too,
+// which 401/403s before the request ever reaches that redaction logic,
+// breaking every public portfolio page outright (confirmed via `curl` and a
+// live agent-browser QA pass, 2026-09-04). PUT/DELETE below stay
+// authenticated — those were genuine unauthenticated-write vulnerabilities
+// per SECURITY-unauthenticated-endpoints.md; this GET was not.
+router.get("/:studentId", getStudentById);
 router.put("/:studentId", authenticateUser, updateStudent);
 router.delete("/:studentId", authenticateUser, requireAdmin, deleteStudentById);
 router.post("/mark-attendance", authenticateUser, markAttendance);

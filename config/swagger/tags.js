@@ -18,7 +18,7 @@ const tags = [
     { name: "Books & Topics", description: "Interactive Chapters, Topics & Access Control" },
     { name: "Jobs", description: "Job Portal & Postings" },
     { name: "Resume & AI Evaluation", description: "Resume Evaluation & Matching against Job Postings" },
-    { name: "Chatbot & AI Voice", description: "AI Conversational Support & Voice Assistant" },
+    { name: "Chatbot", description: "AI Conversational Support" },
     { name: "Blogs & Events", description: "Community Blogs, Events & Dynamic Event Forms" },
     { name: "Notifications", description: "System & User Notifications" },
     { name: "Teams & Reviews", description: "Team Member Profiles and Course Reviews" },

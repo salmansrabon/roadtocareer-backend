@@ -1,5 +1,5 @@
 const express = require("express");
-const { studentSignup, getAllStudents, getAlumniList, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getAllUniversities, getCourseProgress, deleteAttendance, sendContactEmail, saveCertificate, getQaTalent, getStudentsWithAIInterviews  } = require("../controllers/studentController");
+const { studentSignup, getAllStudents, getAlumniList, getStudentById, updateStudent, deleteStudentById, markAttendance, getAttendance, getAllAttendance, migrateStudent, getAllCompanies, getAllUniversities, getCourseProgress, deleteAttendance, sendContactEmail, saveCertificate, getQaTalent  } = require("../controllers/studentController");
 const { searchQATalent, aiSearchQATalent } = require("../controllers/qaTalentController");
 const { addRemark, updateRemark, deleteRemark, getRemarks } = require("../controllers/remarkController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
@@ -48,6 +48,5 @@ router.get("/companies/list", getAllCompanies);
 router.get("/universities/list", getAllUniversities);
 router.get("/course-progress/:studentId", authenticateUser, getCourseProgress);
 router.post("/save-certificate/:studentId", authenticateUser, saveCertificate);
-router.get("/ai-interviews/list", authenticateUser, requireAdmin, getStudentsWithAIInterviews);
 
 module.exports = router;

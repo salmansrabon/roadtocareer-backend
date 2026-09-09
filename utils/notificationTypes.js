@@ -15,6 +15,8 @@ const NOTIFICATION_TYPES = Object.freeze({
     ASSIGNMENT_REVIEWED: "assignment_reviewed",
     PAYMENT_RECORDED: "payment_recorded",
     CERTIFICATE_READY: "certificate_ready",
+    // → admins (mirrors the existing "New Student Enrollment" admin email)
+    STUDENT_ENROLLED: "student_enrolled",
 
     EBOOK_ACCESS_GRANTED: "ebook_access_granted",
 
@@ -44,6 +46,7 @@ const ENTITY_TYPES = Object.freeze({
     ASSIGNMENT_QUESTION: "assignment_question",
     PAYMENT: "payment",
     CERTIFICATE: "certificate",
+    STUDENT: "student",
     BOOK_TOPIC: "book_topic",
     ATTENDANCE: "attendance",
     PROFILE: "profile",

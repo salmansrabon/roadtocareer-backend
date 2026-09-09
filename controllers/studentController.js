@@ -367,6 +367,29 @@ exports.studentSignup = async (req, res) => {
           adminEmailBody
         );
         console.log("📧 Notification email sent to admin.");
+
+        // 🔔 In-app notification (SRS 24), alongside the email above. Same
+        // recipients as the email (role: "admin") rather than adding
+        // teachers, matching this endpoint's existing admin-only email
+        // audience. notify() never throws, so it can't fail the signup
+        // response even if the email above already did.
+        await notify({
+          recipients: adminUsers.map((admin) => admin.username),
+          type: NOTIFICATION_TYPES.STUDENT_ENROLLED,
+          title: "New student enrollment",
+          body: `${student_name} enrolled in ${course.course_title} (Batch ${course.batch_no}).`,
+          link: `/admin/students/${studentId}`,
+          actorUsername: null,
+          actorName: student_name,
+          entityType: ENTITY_TYPES.STUDENT,
+          entityId: studentId,
+          metadata: {
+            studentId,
+            courseId,
+            university,
+            profession,
+          },
+        });
       }
     } catch (adminEmailError) {
       console.error("❌ Error sending email to admin:", adminEmailError);

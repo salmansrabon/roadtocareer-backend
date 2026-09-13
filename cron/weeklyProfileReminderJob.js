@@ -1,4 +1,3 @@
-const { Op } = require("sequelize");
 const moment = require("moment-timezone");
 const Student = require("../models/Student");
 const User = require("../models/User");
@@ -138,15 +137,35 @@ async function runWeeklyProfileReminderJob() {
   const reportDateStr = moment.tz(TIMEZONE).format("DD-MM-YYYY");
 
   try {
-    const eligibleStudents = await Student.findAll({
+    const enrolledStudents = await Student.findAll({
       where: {
         isEnrolled: true,
-        profile_score: { [Op.lt]: PROFILE_SCORE_THRESHOLD },
       },
       include: [{ model: User, attributes: ["email", "isValid"], where: { isValid: true } }],
     });
 
-    console.log(`[weeklyProfileReminderJob] Found ${eligibleStudents.length} eligible student(s).`);
+    // A person can have multiple Student rows sharing one email — registering for a
+    // second course creates a new User/Student pair rather than reusing the first
+    // (see studentSignup). Collapse to one canonical row per email — their earliest
+    // registered *enrolled* course — so this job never double-emails the same person,
+    // and eligibility is judged from that one course rather than whichever course row
+    // happens to dip below threshold. TASK-50.
+    const canonicalByEmail = new Map();
+    for (const student of enrolledStudents) {
+      const existing = canonicalByEmail.get(student.email);
+      if (!existing || student.createdAt < existing.createdAt) {
+        canonicalByEmail.set(student.email, student);
+      }
+    }
+
+    const eligibleStudents = [...canonicalByEmail.values()].filter(
+      (student) => student.profile_score < PROFILE_SCORE_THRESHOLD
+    );
+
+    console.log(
+      `[weeklyProfileReminderJob] Found ${eligibleStudents.length} eligible student(s) ` +
+      `(${enrolledStudents.length} enrolled row(s) across ${canonicalByEmail.size} unique email(s)).`
+    );
 
     // Computed once per student and reused for both the email body and the
     // admin CSV — avoids running the gap analysis twice per student.

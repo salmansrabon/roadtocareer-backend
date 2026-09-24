@@ -222,7 +222,7 @@ exports.studentSignup = async (req, res) => {
     try {
       const formattedClassDays = Array.isArray(course.class_days)
         ? course.class_days.join(", ")
-        : course.class_days.replace(/[\[\]"]/g, "");
+        : course.class_days.replace(/[\[\]"]/g, "").split(",").map((d) => d.trim()).join(", ");
       const studentEmailBody = `
                 Dear ${student_name},
 
@@ -245,10 +245,64 @@ exports.studentSignup = async (req, res) => {
                 Course Admin
             `;
 
+      let installmentPlan = packageData.installment;
+      if (typeof installmentPlan === "string") {
+        try {
+          installmentPlan = JSON.parse(installmentPlan);
+        } catch (parseErr) {
+          installmentPlan = null;
+        }
+      }
+      let installmentAmounts = Array.isArray(installmentPlan?.amount)
+        ? installmentPlan.amount.map(Number).filter((n) => !isNaN(n))
+        : [];
+      const legacyCount = Number(installmentPlan?.total ?? installmentPlan);
+      if (!installmentAmounts.length && legacyCount >= 1) {
+        const fee = Number(packageData.discountedFee);
+        const base = Math.floor(fee / legacyCount);
+        installmentAmounts = Array.from({ length: legacyCount }, (_, i) =>
+          i === legacyCount - 1 ? fee - base * (legacyCount - 1) : base
+        );
+      }
+      const formatTk = (n) => `Tk ${n.toLocaleString("en-US")}`;
+      const installmentDueLabel = (i) =>
+        i === 0
+          ? "Admission time"
+          : ["Second", "Third", "Fourth", "Fifth", "Sixth"][i - 1]
+          ? `${["Second", "Third", "Fourth", "Fifth", "Sixth"][i - 1]} month`
+          : `Month ${i + 1}`;
+      const totalFee = Number(packageData.discountedFee);
+      const paymentPlanHtml = installmentAmounts.length
+        ? `<li><strong>Total Fee:</strong> ${formatTk(totalFee)} (payable in ${
+            installmentAmounts.length
+          } installment${installmentAmounts.length > 1 ? "s" : ""} in ${
+            installmentAmounts.length
+          } month${installmentAmounts.length > 1 ? "s" : ""})</li>
+                                ${installmentAmounts
+                                  .map(
+                                    (amt, i) =>
+                                      `<li><strong>Installment ${
+                                        i + 1
+                                      }:</strong> ${formatTk(
+                                        amt
+                                      )} [${installmentDueLabel(i)}]</li>`
+                                  )
+                                  .join("\n                                ")}`
+        : `<li><strong>Total Fee:</strong> ${formatTk(
+            Number(packageData.discountedFee)
+          )}</li>`;
+
+      const monthlyRewardsHtml = /^sdet/i.test(String(courseId))
+        ? `<h4>Monthly Rewards:</h4>
+                            <p>Top 5 scorers each month will receive a performance bonus of <strong>Tk 500</strong>.</p>`
+        : "";
+
       const paymentEmailBody = `
                             <div style="font-family: Arial, sans-serif; color: #222;">
                             <p>Assalamu Alaikum,</p>
-                            <p>Greetings from <strong>Road to SDET</strong>! Hope you’re doing well. We’re excited to let you know that <strong>batch ${
+                            <p>Greetings from <strong>Road to SDET</strong>! Hope you’re doing well. We’re excited to let you know that <strong>${
+                              course.course_title
+                            } batch ${
                               course.batch_no
                             }</strong> is starting soon.</p>
                             
@@ -276,14 +330,10 @@ exports.studentSignup = async (req, res) => {
                                 <li><strong>Google Drive:</strong> Slides, PDFs &amp; recorded videos</li>
                                 <li><strong>Discord:</strong> For support and discussion</li>
                             </ul>
-                            <h4>Monthly Rewards:</h4>
-                            <p>Top 5 scorers each month will receive a performance bonus of <strong>Tk 500</strong>.</p>
+                            ${monthlyRewardsHtml}
                             <h4>Payment Procedure:</h4>
                             <ul>
-                                <li><strong>Total Fee:</strong> Tk 8,500 (payable in 3 installments in 3 months)</li>
-                                <li><strong>Installment 1:</strong> Tk 3,000 [Admission time]</li>
-                                <li><strong>Installment 2:</strong> Tk 2,500 [Second month]</li>
-                                <li><strong>Installment 3:</strong> Tk 3,000 [Third month]</li>
+                                ${paymentPlanHtml}
                                 <li><strong>Payment Deadline:</strong> ${formatDate(
                                   course.orientation_date
                                 )} at 11:59 PM</li>
@@ -316,18 +366,12 @@ exports.studentSignup = async (req, res) => {
         `Road to SDET- Batch ${course.batch_no} Welcome to our Course!`,
         studentEmailBody
       );
-      // Check if course title contains "Full Stack SQA" (case-insensitive, flexible with hyphens/spacing)
-      const courseTitle = course.course_title
-        .toLowerCase()
-        .replace(/[-\s]+/g, " ");
-      if (courseTitle.includes("full stack sqa")) {
-        await sendEmail(
-          email,
-          `Road to SDET- Batch ${course.batch_no} Course payment procedure and class schedule`,
-          paymentEmailBody,
-          "text/html"
-        );
-      }
+      await sendEmail(
+        email,
+        `Road to SDET- Batch ${course.batch_no} Course payment procedure and class schedule`,
+        paymentEmailBody,
+        "text/html"
+      );
     } catch (emailError) {
       console.error("❌ Error sending email to student:", emailError);
       return res.status(500).json({

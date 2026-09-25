@@ -117,4 +117,20 @@ function recalculateEmployment(employment, now = new Date()) {
     };
 }
 
-module.exports = { recalculateEmployment };
+// Mirrors getCurrentOrLastEmployer in frontend/src/features/profile/utils.js — keep both in sync.
+// The profile form appends new jobs to the end of employment.company, so index 0 is not reliably
+// the current employer. Prefer the entry marked currentlyWorking; otherwise the latest end date;
+// entries with no usable dates (legacy) fall back to the first in the list.
+function getCurrentOrLastEmployer(companies) {
+    if (!Array.isArray(companies) || companies.length === 0) return null;
+    const current = companies.find((c) => c?.currentlyWorking === true && c.companyName);
+    if (current) return current;
+    const endKey = (c) => (Number(c?.toYear) || 0) * 12 + (Number(c?.toMonth) || 0);
+    let latest = companies[0];
+    companies.forEach((c) => {
+        if (c?.companyName && endKey(c) > endKey(latest)) latest = c;
+    });
+    return latest;
+}
+
+module.exports = { recalculateEmployment, getCurrentOrLastEmployer };

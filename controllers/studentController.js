@@ -24,6 +24,7 @@ const {
   setBatchEntries,
 } = require("../utils/attendanceHelper");
 const { calculateProfileScore } = require("../utils/profileScoreHelper");
+const { getCurrentOrLastEmployer } = require("../utils/employmentExperienceHelper");
 const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
 
 // ✅ Function to Generate Unique Student ID
@@ -1092,6 +1093,13 @@ exports.updateStudent = async (req, res) => {
       console.log("Certificate disabled, clearing certificate URL");
     }
 
+    // ✅ students.company/designation (alumni list, admin filters, company autocomplete) are
+    // not editable in the profile form, so keep them in step with the current/last employer
+    // from the employment history. No named employer -> leave whatever the request sent.
+    const currentEmployer = getCurrentOrLastEmployer(req.body.employment?.company);
+    const syncedCompany = String(currentEmployer?.companyName ?? "").trim();
+    const syncFromEmployment = syncedCompany !== "" && syncedCompany !== "N/A";
+
     // ✅ Build the update payload once so the profile score can be
     // recalculated from it before the single write below (avoids a second
     // round-trip and keeps the save atomic).
@@ -1104,8 +1112,8 @@ exports.updateStudent = async (req, res) => {
       university,
       passingYear,
       profession,
-      company,
-      designation,
+      company: syncFromEmployment ? syncedCompany : company,
+      designation: syncFromEmployment ? String(currentEmployer.designation ?? "").trim() : designation,
       experience,
       employment: req.body.employment,
       education: req.body.education,

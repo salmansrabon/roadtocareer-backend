@@ -1141,9 +1141,17 @@ exports.updateStudent = async (req, res) => {
       previous_batch_no,
     };
 
+    // ✅ Score from the stored student overlaid with only the fields this request actually sent.
+    // Partial saves are normal (admin student-details sends just { employment } or { skill }), and
+    // spreading `undefined` over the stored value would score that field as empty — a fully
+    // completed student ended up at 9 after one admin employment edit. student.update() already
+    // skips undefined, so the stored data was never affected, only the score.
+    const sentFields = Object.fromEntries(
+      Object.entries(studentUpdatePayload).filter(([, value]) => value !== undefined)
+    );
     studentUpdatePayload.profile_score = calculateProfileScore({
       ...student.toJSON(),
-      ...studentUpdatePayload,
+      ...sentFields,
     });
 
     // ✅ Update Student Data (including the recalculated profile score) in one write

@@ -108,6 +108,23 @@ exports.deleteMCQ = async (req, res) => {
 
 
 // ✅ API to Fetch a Unique Random MCQ
+// Courses that have at least one MCQ, with their question counts (import sources).
+exports.getCoursesWithMcqs = async (req, res) => {
+    try {
+        const rows = await MCQ.findAll({
+            attributes: ['CourseId', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+            group: ['CourseId'],
+            raw: true
+        });
+        res.status(200).json({
+            courses: rows.map(r => ({ CourseId: r.CourseId, count: Number(r.count) }))
+        });
+    } catch (error) {
+        console.error('Error fetching courses with MCQs:', error);
+        res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
 exports.getMCQ = async (req, res) => {
     try {
         const { courseId } = req.params;
@@ -482,22 +499,38 @@ exports.copyMCQQuestions = async (req, res) => {
             return res.status(404).json({ message: 'No MCQs found for the source CourseId.' });
         }
 
-        // 2. Prepare new MCQs for insertion
-        const mcqsToInsert = sourceMcqs.map(item => ({
-            CourseId: toCourseId,
-            mcq_question: typeof item.mcq_question === 'string'
-                ? JSON.parse(item.mcq_question)
-                : item.mcq_question,
+        // 2. Skip questions the target already has (matched by normalized title)
+        const parseQuestion = (q) => (typeof q === 'string' ? JSON.parse(q) : q);
+        const titleKey = (q) => String(q?.question_title || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
-            createdAt: new Date(),
-            updatedAt: new Date()
-        }));
+        const existingMcqs = await MCQ.findAll({ where: { CourseId: toCourseId } });
+        const seenTitles = new Set(existingMcqs.map(item => titleKey(parseQuestion(item.mcq_question))));
+
+        const mcqsToInsert = [];
+        for (const item of sourceMcqs) {
+            const question = parseQuestion(item.mcq_question);
+            const key = titleKey(question);
+            if (seenTitles.has(key)) continue;
+            seenTitles.add(key); // also dedupes within the source itself
+            mcqsToInsert.push({
+                CourseId: toCourseId,
+                mcq_question: question,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+        }
+        const skipped = sourceMcqs.length - mcqsToInsert.length;
 
         // 3. Bulk insert into new CourseId
-        await MCQ.bulkCreate(mcqsToInsert);
+        if (mcqsToInsert.length > 0) {
+            await MCQ.bulkCreate(mcqsToInsert);
+        }
 
         res.status(200).json({
-            message: `Successfully copied ${mcqsToInsert.length} MCQ(s) from '${fromCourseId}' to '${toCourseId}'`
+            copied: mcqsToInsert.length,
+            skipped,
+            message: `Copied ${mcqsToInsert.length} MCQ(s) from '${fromCourseId}' to '${toCourseId}'` +
+                (skipped > 0 ? `; skipped ${skipped} already existing.` : '.')
         });
     } catch (error) {
         console.error('Error copying MCQs:', error);

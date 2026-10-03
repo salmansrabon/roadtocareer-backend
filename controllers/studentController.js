@@ -1641,6 +1641,7 @@ exports.migrateStudent = async (req, res) => {
     await Student.update(
       {
         quiz_answer: null,
+        quiz_started_at: null, // a new batch's quiz starts with a fresh clock
         CourseId, // Update courseId
         package, // Update package
         batch_no, // Update new batch

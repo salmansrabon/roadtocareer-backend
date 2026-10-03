@@ -124,32 +124,104 @@ module.exports = {
   "/api/mcq/validate": {
     post: {
       tags: ["MCQ & Quiz"],
-      summary: "Validate a student's MCQ answer",
+      summary: "Save a student's answer for one MCQ (called as each option is picked)",
+      description:
+        "Upserts the answer by mcq_id in the student's quiz_answer, so changing an answer replaces it. " +
+        "Saves are rejected once the quiz is submitted or its time is over (10s grace); a save for a quiz " +
+        "that was never started also starts the clock. The response never reveals correctness.",
+      security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: {
               type: "object",
-              required: ["studentId", "mcq_id", "answer"],
+              required: ["CourseId", "StudentId", "mcq_id", "user_answer"],
               properties: {
-                studentId: { type: "string", example: "RTS-JAD-2601" },
+                CourseId: { type: "string", example: "sdet192026" },
+                StudentId: { type: "string", example: "RTS-JAD-2601" },
                 mcq_id: { type: "integer", example: 301 },
-                answer: { type: "string", example: "Fluent wait" },
+                user_answer: { type: "string", example: "Fluent wait" },
               },
             },
           },
         },
       },
       responses: {
-        200: jsonRes("Answer graded", {
-          success: true,
-          isCorrect: true,
-          correctAnswer: "Fluent wait",
-          score: 1,
+        200: jsonRes("Answer saved", {
+          message: "Answer saved.",
+          StudentId: "RTS-JAD-2601",
+          remainingSeconds: 2540,
         }),
-        400: errRes("Validation error", "studentId, mcq_id and answer are required."),
-        404: errRes("MCQ not found", "MCQ not found."),
+        400: errRes("Validation error", "Missing required fields: CourseId, mcq_id, StudentId, or user_answer."),
+        401: UNAUTHORIZED,
+        403: errRes("Quiz over, or saving another student's answer", "The quiz is already submitted or the time is over."),
+        404: errRes("MCQ, student or quiz config not found", "MCQ not found."),
+        500: errRes("Unexpected server error", "Internal Server Error."),
+      },
+    },
+  },
+  "/api/mcq/start": {
+    post: {
+      tags: ["MCQ & Quiz"],
+      summary: "Start (or resume) the logged-in student's quiz",
+      description:
+        "Stamps students.quiz_started_at on the first call, which starts the quiz clock " +
+        "(quiz_started_at + totalTime). Later calls are idempotent and return the same clock plus the " +
+        "answers saved so far, so a refresh or crash resumes instead of restarting. The student is taken " +
+        "from the token. 403 when the quiz was already submitted or its time ran out.",
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: jsonRes("Quiz started or resumed", {
+          message: "Quiz resumed.",
+          resume: true,
+          startedAt: "2026-10-10T04:00:00.000Z",
+          remainingSeconds: 2140,
+          answers: { 146: "Fluent wait", 147: "Implicit wait" },
+        }),
+        401: UNAUTHORIZED,
+        403: errRes("Already attempted", "You have already attempted the quiz."),
+        404: errRes("Student or quiz config not found", "Quiz configuration not found."),
+        500: errRes("Unexpected server error", "Internal Server Error."),
+      },
+    },
+  },
+  "/api/mcq/reset/{studentId}": {
+    post: {
+      tags: ["MCQ & Quiz"],
+      summary: "Reset a student's quiz so they can attempt it again (Admin/Teacher)",
+      description:
+        "Clears the student's saved quiz answers (and therefore their result) and quiz_started_at. " +
+        "Irreversible. The student gets a fresh clock the next time they start the quiz.",
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
+      ],
+      responses: {
+        200: jsonRes("Quiz reset", {
+          message: "Quiz reset for RTS-JAD-2601. They can attempt it again.",
+          clearedAnswers: 20,
+        }),
+        401: UNAUTHORIZED,
+        403: FORBIDDEN_ADMIN,
+        404: errRes("Student not found", "Student not found."),
+        500: errRes("Unexpected server error", "Internal Server Error."),
+      },
+    },
+  },
+  "/api/mcq/submit": {
+    post: {
+      tags: ["MCQ & Quiz"],
+      summary: "Finalize the logged-in student's quiz attempt",
+      description:
+        "Ends the attempt (also called by the page's auto-submit at 0:00). Answers are already saved " +
+        "per question; this prevents resuming. Idempotent. The student is taken from the token.",
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: jsonRes("Quiz submitted", { message: "Quiz submitted.", answered: 20 }),
+        400: errRes("Nothing saved", "No answers to submit."),
+        401: UNAUTHORIZED,
+        404: errRes("Student not found", "Student not found."),
         500: errRes("Unexpected server error", "Internal Server Error."),
       },
     },

@@ -1,5 +1,5 @@
 const express = require("express");
-const { addMCQ, updateMCQ, deleteMCQ, getMCQ, validateMCQAnswer, getStudentResult, checkQuizAttempt, getAllStudentsResultsByCourse, copyMCQQuestions, getCoursesWithMcqs } = require("../controllers/mcqController");
+const { addMCQ, updateMCQ, deleteMCQ, getMCQ, validateMCQAnswer, getStudentResult, checkQuizAttempt, getAllStudentsResultsByCourse, copyMCQQuestions, getCoursesWithMcqs, startQuiz, submitQuiz, resetQuiz } = require("../controllers/mcqController");
 const { authenticateUser, requireAdmin } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
@@ -11,7 +11,10 @@ router.delete("/delete/:mcq_id", authenticateUser, requireAdmin, deleteMCQ);
 router.get("/fetch/:courseId", getMCQ);
 router.get("/admin/fetch/:courseId", authenticateUser, requireAdmin, getMCQ);
 router.get("/fetch", authenticateUser, requireAdmin, getMCQ);
-router.post("/validate", validateMCQAnswer);
+router.post("/validate", authenticateUser, validateMCQAnswer);
+router.post("/start", authenticateUser, startQuiz);
+router.post("/submit", authenticateUser, submitQuiz);
+router.post("/reset/:studentId", authenticateUser, requireAdmin, resetQuiz);
 router.get("/result/:studentId", authenticateUser, getStudentResult);
 router.get("/result/list/:courseId", authenticateUser,requireAdmin, getAllStudentsResultsByCourse);
 router.get("/attempt-status/:studentId", authenticateUser, checkQuizAttempt);

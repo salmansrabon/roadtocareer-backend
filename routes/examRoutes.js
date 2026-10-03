@@ -75,6 +75,9 @@ router.get("/evaluate/:examId/:studentId", authenticateUser, requireAdmin, examS
 // Evaluate student submission (Admin only)
 router.put("/evaluate/:examId/:studentId", authenticateUser, requireAdmin, examSubmissionController.evaluateStudentSubmission);
 
+// Reset a student's attempt so they can take the exam again (Admin only)
+router.post("/reset/:examId/:studentId", authenticateUser, requireAdmin, examSubmissionController.resetExamForStudent);
+
 // ==============================================
 // AI EVALUATION ROUTES (Admin Only)
 // ==============================================

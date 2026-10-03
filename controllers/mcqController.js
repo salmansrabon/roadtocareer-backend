@@ -199,13 +199,126 @@ exports.getMCQ = async (req, res) => {
 
 
 
-// ✅ API to Validate MCQ Answer
+// ---------------------------------------------------------------------------
+// Quiz attempt state
+//
+// students.quiz_started_at is stamped the moment the student opens the quiz
+// (POST /mcq/start) and is the single source of the quiz clock:
+// quiz_started_at + config.totalTime. A refresh, crash or lost connection can
+// never restart it.
+//
+// Answers are saved one by one while the student takes the quiz and live in
+// students.quiz_answer (a JSON array, one entry per question). `submitted_at`
+// is stamped on every entry when the student submits (or the page auto-submits
+// at 0:00) and ends the attempt early. Saved answers with no quiz_started_at
+// predate this column and count as a finished attempt.
+// ---------------------------------------------------------------------------
+const QUIZ_SAVE_GRACE_MS = 10 * 1000; // lets the final auto-save land right at 0:00
+
+const parseQuizAnswers = (raw) => {
+    try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        console.warn("⚠️ Failed to parse quiz_answer:", error.message);
+        return [];
+    }
+};
+
+// status: fresh (not started) | in_progress | expired (time up, not submitted)
+// | finished (submitted, or a pre-change attempt)
+const getQuizState = (startedAt, entries, totalTimeMin, now = Date.now()) => {
+    const totalMs = totalTimeMin * 60 * 1000;
+    if (!startedAt) {
+        return entries.length > 0
+            ? { status: "finished", remainingMs: 0 }
+            : { status: "fresh", remainingMs: totalMs };
+    }
+    if (entries.some(e => e.submitted_at)) {
+        return { status: "finished", remainingMs: 0 };
+    }
+    const endsAt = new Date(startedAt).getTime() + totalMs;
+    const remainingMs = Math.max(0, endsAt - now);
+    return { status: remainingMs > 0 ? "in_progress" : "expired", remainingMs, endsAt };
+};
+
+// quiz_started_at is a DATETIME (no fractional seconds): stamp whole seconds so
+// the value returned right after stamping equals what every later read returns.
+const wholeSecond = (ms) => new Date(Math.floor(ms / 1000) * 1000);
+
+const answersByMcqId = (entries) =>
+    Object.fromEntries(entries.map(e => [e.mcq_id, e.user_answer]));
+
+// A student may only act on their own quiz (admins/teachers are not blocked).
+const isOtherStudent = (req, studentId) =>
+    req.user?.role === "student" && req.user.username !== studentId;
+
+// ✅ API to start (or resume) the logged-in student's quiz. Stamps the start
+// time on first call; later calls return the same clock plus saved answers, so
+// the page can resume after a refresh. Idempotent.
+exports.startQuiz = async (req, res) => {
+    try {
+        const studentId = req.user?.username;
+        if (!studentId) {
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        const outcome = await sequelize.transaction(async (t) => {
+            const student = await Student.findOne({
+                where: { StudentId: studentId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+            if (!student) return { code: 404, body: { message: "Student not found." } };
+
+            const config = await McqConfig.findOne({ where: { CourseId: student.CourseId }, transaction: t });
+            if (!config) return { code: 404, body: { message: "Quiz configuration not found." } };
+
+            const entries = parseQuizAnswers(student.quiz_answer);
+            const now = Date.now();
+            let startedAt = student.quiz_started_at;
+            const state = getQuizState(startedAt, entries, config.totalTime, now);
+
+            if (state.status === "finished" || state.status === "expired") {
+                return { code: 403, body: { message: "You have already attempted the quiz." } };
+            }
+
+            if (state.status === "fresh") {
+                startedAt = wholeSecond(now);
+                await student.update({ quiz_started_at: startedAt }, { transaction: t });
+            }
+
+            const after = getQuizState(startedAt, entries, config.totalTime, now);
+            return {
+                code: 200,
+                body: {
+                    message: state.status === "fresh" ? "Quiz started." : "Quiz resumed.",
+                    resume: state.status === "in_progress",
+                    startedAt: new Date(startedAt).toISOString(),
+                    remainingSeconds: Math.ceil(after.remainingMs / 1000),
+                    answers: answersByMcqId(entries)
+                }
+            };
+        });
+
+        return res.status(outcome.code).json(outcome.body);
+    } catch (error) {
+        console.error("❌ Error starting quiz:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+
+// ✅ API to save a student's answer for one MCQ (called as each option is picked)
 exports.validateMCQAnswer = async (req, res) => {
     try {
         const { CourseId, StudentId, mcq_id, user_answer } = req.body;
 
         if (!CourseId || !mcq_id || !user_answer || !StudentId) {
             return res.status(400).json({ message: "Missing required fields: CourseId, mcq_id, StudentId, or user_answer." });
+        }
+
+        if (isOtherStudent(req, StudentId)) {
+            return res.status(403).json({ message: "You can only save your own quiz answers." });
         }
 
         // ✅ Fetch the MCQ
@@ -225,55 +338,149 @@ exports.validateMCQAnswer = async (req, res) => {
             return res.status(500).json({ message: "Invalid JSON format in MCQ data." });
         }
 
-        // ✅ Validate answer
         const isCorrect = mcqQuestion.correct_answer === user_answer;
 
-        // ✅ Fetch student
-        const student = await Student.findOne({ where: { StudentId } });
-        if (!student) {
-            return res.status(404).json({ message: "Student not found." });
-        }
+        // Row lock: answers arrive in quick succession and each one is a
+        // read-modify-write of the same JSON column.
+        const outcome = await sequelize.transaction(async (t) => {
+            const student = await Student.findOne({
+                where: { StudentId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+            if (!student) return { code: 404, body: { message: "Student not found." } };
 
-        // ✅ Parse quiz_answer safely
-        let quizHistory = [];
-        try {
-            const raw = student.quiz_answer;
-            if (typeof raw === "string") {
-                quizHistory = JSON.parse(raw);
-                if (!Array.isArray(quizHistory)) {
-                    quizHistory = [];
-                }
-            } else if (Array.isArray(raw)) {
-                quizHistory = raw;
+            const config = await McqConfig.findOne({ where: { CourseId: student.CourseId }, transaction: t });
+            if (!config) return { code: 404, body: { message: "Quiz configuration not found." } };
+
+            const entries = parseQuizAnswers(student.quiz_answer);
+            const now = Date.now();
+            const state = getQuizState(student.quiz_started_at, entries, config.totalTime, now);
+            const canSave =
+                state.status === "fresh" ||
+                state.status === "in_progress" ||
+                (state.status === "expired" && now - state.endsAt <= QUIZ_SAVE_GRACE_MS);
+            if (!canSave) {
+                return { code: 403, body: { message: "The quiz is already submitted or the time is over." } };
             }
-        } catch (error) {
-            console.warn(`⚠️ Failed to parse quiz_answer for ${StudentId}:`, error.message);
-            quizHistory = [];
-        }
 
-        // ✅ Push current quiz attempt
-        quizHistory.push({
-            mcq_id,
-            question: mcqQuestion.question_title,
-            user_answer,
-            correct_answer: mcqQuestion.correct_answer,
-            isCorrect,
-            attempted_at: new Date().toISOString()
+            const existingIndex = entries.findIndex(e => String(e.mcq_id) === String(mcq.id));
+            const entry = {
+                mcq_id: mcq.id,
+                question: mcqQuestion.question_title,
+                user_answer,
+                correct_answer: mcqQuestion.correct_answer,
+                isCorrect,
+                attempted_at: new Date(now).toISOString()
+            };
+            if (existingIndex >= 0) {
+                entries[existingIndex] = entry; // changing an answer replaces it, never duplicates
+            } else {
+                entries.push(entry);
+            }
+
+            // A save for a quiz that was never explicitly started (e.g. a tab
+            // opened before this change) starts the clock now.
+            const startedAt = student.quiz_started_at || wholeSecond(now);
+            const updates = { quiz_answer: JSON.stringify(entries) };
+            if (!student.quiz_started_at) updates.quiz_started_at = startedAt;
+            await student.update(updates, { transaction: t });
+
+            const after = getQuizState(startedAt, entries, config.totalTime, now);
+            return {
+                code: 200,
+                body: {
+                    message: "Answer saved.",
+                    StudentId,
+                    remainingSeconds: Math.ceil(after.remainingMs / 1000)
+                }
+            };
         });
 
-        // ✅ Update the student's quiz_answer as string
-        const updatedAnswer = JSON.stringify(quizHistory);
-        await student.update({ quiz_answer: updatedAnswer });
-
-        return res.status(200).json({
-            isCorrect,
-            status: isCorrect ? "Correct answer!" : "Wrong answer!",
-            StudentId,
-            score: isCorrect ? 1 : 0
-        });
+        // Deliberately no isCorrect/score in the response: answers are saved
+        // mid-quiz, and returning correctness would let students see which
+        // answers are wrong and change them.
+        return res.status(outcome.code).json(outcome.body);
 
     } catch (error) {
-        console.error("❌ Error validating MCQ answer:", error);
+        console.error("❌ Error saving MCQ answer:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+
+// ✅ API to finalize the logged-in student's quiz attempt (manual submit or
+// the page's auto-submit at 0:00). Answers are already saved; this ends the
+// attempt so it cannot be resumed. Idempotent.
+exports.submitQuiz = async (req, res) => {
+    try {
+        const studentId = req.user?.username;
+        if (!studentId) {
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        const outcome = await sequelize.transaction(async (t) => {
+            const student = await Student.findOne({
+                where: { StudentId: studentId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+            if (!student) return { code: 404, body: { message: "Student not found." } };
+
+            const entries = parseQuizAnswers(student.quiz_answer);
+            if (entries.length === 0) {
+                return { code: 400, body: { message: "No answers to submit." } };
+            }
+
+            if (entries.some(e => !e.submitted_at)) {
+                const submittedAt = new Date().toISOString();
+                const stamped = entries.map(e => (e.submitted_at ? e : { ...e, submitted_at: submittedAt }));
+                await student.update({ quiz_answer: JSON.stringify(stamped) }, { transaction: t });
+            }
+
+            return { code: 200, body: { message: "Quiz submitted.", answered: entries.length } };
+        });
+
+        return res.status(outcome.code).json(outcome.body);
+    } catch (error) {
+        console.error("❌ Error submitting quiz:", error);
+        return res.status(500).json({ message: "Internal Server Error." });
+    }
+};
+
+
+// ✅ API for admins/teachers: reset a student's quiz so they can attempt it again.
+// Clears the saved answers (and so the result) and the start time, which gives
+// the student a fresh clock on their next start. Irreversible.
+exports.resetQuiz = async (req, res) => {
+    try {
+        const { studentId } = req.params;
+
+        const outcome = await sequelize.transaction(async (t) => {
+            const student = await Student.findOne({
+                where: { StudentId: studentId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+            if (!student) return { code: 404, body: { message: "Student not found." } };
+
+            const clearedAnswers = parseQuizAnswers(student.quiz_answer).length;
+            await student.update({ quiz_answer: null, quiz_started_at: null }, { transaction: t });
+
+            return {
+                code: 200,
+                body: {
+                    message: `Quiz reset for ${studentId}. They can attempt it again.`,
+                    clearedAnswers
+                }
+            };
+        });
+
+        if (outcome.code === 200) {
+            console.log(`🔄 Quiz reset for ${studentId} by ${req.user?.username} (${outcome.body.clearedAnswers} answer(s) cleared)`);
+        }
+        return res.status(outcome.code).json(outcome.body);
+    } catch (error) {
+        console.error("❌ Error resetting quiz:", error);
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };
@@ -352,12 +559,18 @@ exports.getStudentResult = async (req, res) => {
     }
 };
 
+// Read-only eligibility check (the landing page's "Start Quiz" gate). Eligible
+// means the student can start or resume; it never starts the clock itself.
 exports.checkQuizAttempt = async (req, res) => {
     try {
         const { studentId } = req.params;
 
         if (!studentId) {
             return res.status(400).json({ message: "Student ID is required." });
+        }
+
+        if (isOtherStudent(req, studentId)) {
+            return res.status(403).json({ message: "You can only check your own quiz attempt." });
         }
 
         // ✅ Fetch Student
@@ -367,28 +580,43 @@ exports.checkQuizAttempt = async (req, res) => {
             return res.status(404).json({ message: "Student not found." });
         }
 
-        // ✅ Check quiz_answer field
-        if (student.quiz_answer && student.quiz_answer !== "[]" && student.quiz_answer !== "{}") {
+        const entries = parseQuizAnswers(student.quiz_answer);
+        const config = await McqConfig.findOne({ where: { CourseId: student.CourseId } });
+
+        const alreadyAttempted = {
+            isEligible: false,
+            message: "You have already attempted the quiz."
+        };
+
+        // Without a config there is no clock: any saved answer or start = attempted.
+        if (!config) {
             return res.status(200).json(
-                {
-                    isEligible: false,
-                    message: "You have already attempted the quiz."
-                }
+                entries.length > 0 || student.quiz_started_at
+                    ? alreadyAttempted
+                    : { isEligible: true, message: "You have not attempted the quiz yet." }
             );
         }
 
-        return res.status(200).json(
-            {
-                isEligible: true,
-                message: "You have not attempted the quiz yet."
+        const state = getQuizState(student.quiz_started_at, entries, config.totalTime);
 
-            });
+        if (state.status === "finished" || state.status === "expired") {
+            return res.status(200).json(alreadyAttempted);
+        }
+
+        return res.status(200).json({
+            isEligible: true,
+            resume: state.status === "in_progress",
+            message: state.status === "in_progress"
+                ? "You have a quiz in progress."
+                : "You have not attempted the quiz yet."
+        });
 
     } catch (error) {
         console.error("Error checking quiz attempt:", error);
         return res.status(500).json({ message: "Internal Server Error." });
     }
 };
+
 exports.getAllStudentsResultsByCourse = async (req, res) => {
     try {
         const { courseId } = req.params;

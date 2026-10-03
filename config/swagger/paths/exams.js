@@ -160,6 +160,10 @@ module.exports = {
     get: {
       tags: ["Exams"],
       summary: "Get exam questions for a student taking the exam (hints and answers stripped)",
+      description:
+        "The first call for an exam stamps the student's start time (students.exam_started_at); later calls " +
+        "(reload, second tab) reuse it, so the timer cannot be reset. remainingSeconds = whichever ends first: " +
+        "totalTime from the student's own start, or the exam window. 403 once that time is over.",
       security: [{ BearerAuth: [] }],
       parameters: [{ name: "examId", in: "path", required: true, schema: { type: "integer", example: 12 } }],
       responses: {
@@ -173,6 +177,7 @@ module.exports = {
               totalQuestion: 10,
               totalTime: 90,
               end_datetime: "2026-09-20T16:00:00.000Z",
+              remainingSeconds: 4980,
             },
             questions: [
               {
@@ -190,7 +195,7 @@ module.exports = {
         }),
         401: UNAUTHORIZED,
         403: errRes(
-          "Not your course / not active / outside the exam window",
+          "Not your course / not active / outside the exam window / the student's own time is over",
           "Exam has not started yet"
         ),
         404: errRes("Exam, student, or questions missing", "Exam not found"),
@@ -279,6 +284,32 @@ module.exports = {
         }),
         401: UNAUTHORIZED,
         404: errRes("No submission for this exam", "No submission found for this exam"),
+        500: SERVER_ERROR,
+      },
+    },
+  },
+  "/api/exam/reset/{examId}/{studentId}": {
+    post: {
+      tags: ["Exams"],
+      summary: "Reset a student's attempt so they can take the exam again (Admin/Teacher)",
+      description:
+        "Removes the student's submission for this exam (answers, scores, feedback) and their recorded " +
+        "start time (students.exam_started_at). Irreversible. They can retake it only while the exam is " +
+        "still active and inside its window.",
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: "examId", in: "path", required: true, schema: { type: "integer", example: 12 } },
+        { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
+      ],
+      responses: {
+        200: jsonRes("Exam reset", {
+          message: "Exam reset for RTS-JAD-2601. They can take it again.",
+          clearedSubmission: true,
+          clearedStart: true,
+        }),
+        401: UNAUTHORIZED,
+        403: FORBIDDEN_ADMIN,
+        404: errRes("Student not found", "Student not found"),
         500: SERVER_ERROR,
       },
     },

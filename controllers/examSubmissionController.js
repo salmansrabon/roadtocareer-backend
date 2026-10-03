@@ -3,7 +3,12 @@ const ExamQuestion = require("../models/ExamQuestion");
 const Student = require("../models/Student");
 const Course = require("../models/Course");
 const { Op } = require("sequelize");
+const sequelize = require("../config/db");
 const { sendEmail } = require("../utils/emailHelper");
+
+// A submit may arrive a little after the exam clock hits 0 (auto-submit at 0:00
+// plus network time); anything later than this is rejected.
+const EXAM_SUBMIT_GRACE_MS = 60 * 1000;
 
 // Get Exam for Student (without hints)
 exports.getExamForStudent = async (req, res) => {
@@ -72,6 +77,36 @@ exports.getExamForStudent = async (req, res) => {
             return res.status(404).json({ message: "No questions found for this exam" });
         }
 
+        // Start the student's clock the first time they open this exam. Later
+        // opens (reload, second tab) reuse the same start, so the timer can never
+        // be reset by reopening the page. Row lock: two simultaneous opens must
+        // not both stamp.
+        const nowMs = Date.now();
+        const startedAtMs = await sequelize.transaction(async (t) => {
+            const locked = await Student.findOne({
+                where: { StudentId: studentId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+            const started = { ...(locked.exam_started_at || {}) };
+            if (!started[examId]) {
+                started[examId] = new Date(nowMs).toISOString();
+                await locked.update({ exam_started_at: started }, { transaction: t });
+            }
+            return new Date(started[examId]).getTime();
+        });
+
+        // Remaining = whichever ends first: the exam duration from the student's
+        // own start, or the exam window (same Bangladesh-offset convention as the
+        // window checks above).
+        const byDurationMs = examConfig.totalTime * 60 * 1000 - (nowMs - startedAtMs);
+        const byWindowMs = new Date(examConfig.end_datetime).getTime() - (nowMs + bangladeshOffset);
+        const remainingSeconds = Math.floor(Math.min(byDurationMs, byWindowMs) / 1000);
+
+        if (remainingSeconds <= 0) {
+            return res.status(403).json({ message: "Your time for this exam is over." });
+        }
+
         // Remove hints from questions for student view and reverse for display
         const totalQuestions = examQuestions.questions.length;
         const questionsForStudent = examQuestions.questions.reverse().map((q, index) => ({
@@ -89,7 +124,8 @@ exports.getExamForStudent = async (req, res) => {
                     exam_description: examConfig.exam_description,
                     totalQuestion: examConfig.totalQuestion,
                     totalTime: examConfig.totalTime,
-                    end_datetime: examConfig.end_datetime
+                    end_datetime: examConfig.end_datetime,
+                    remainingSeconds
                 },
                 questions: questionsForStudent
             }
@@ -140,6 +176,17 @@ exports.submitExamAnswers = async (req, res) => {
 
         if (hasSubmitted) {
             return res.status(409).json({ message: "You have already submitted this exam" });
+        }
+
+        // The student's own exam clock: reject a submit that arrives well after
+        // their time ran out. An exam with no recorded start (opened before the
+        // clock was tracked) is not limited here.
+        const startedAtIso = student.exam_started_at && student.exam_started_at[examId];
+        if (startedAtIso) {
+            const allowedUntilMs = new Date(startedAtIso).getTime() + examConfig.totalTime * 60 * 1000 + EXAM_SUBMIT_GRACE_MS;
+            if (now.getTime() > allowedUntilMs) {
+                return res.status(403).json({ message: "Your time for this exam is over." });
+            }
         }
 
         // Get exam questions
@@ -257,6 +304,56 @@ exports.getStudentExamResult = async (req, res) => {
 
     } catch (error) {
         console.error("Error getting exam result:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// Reset a student's attempt at one exam (Admin/Teacher): removes their
+// submission (answers, scores, feedback) and their recorded start time, so they
+// can open and take the exam again with a fresh clock. Irreversible. Fresh
+// arrays/objects are assigned (not edited in place) so the JSON columns are saved.
+exports.resetExamForStudent = async (req, res) => {
+    try {
+        const { examId, studentId } = req.params;
+        const examIdNum = parseInt(examId);
+
+        const outcome = await sequelize.transaction(async (t) => {
+            const student = await Student.findOne({
+                where: { StudentId: studentId },
+                transaction: t,
+                lock: t.LOCK.UPDATE
+            });
+            if (!student) return { code: 404, body: { message: "Student not found" } };
+
+            const submissions = student.exam_answer || [];
+            const remaining = submissions.filter(answer => answer.exam_id !== examIdNum);
+            const clearedSubmission = remaining.length !== submissions.length;
+
+            const started = { ...(student.exam_started_at || {}) };
+            const clearedStart = Object.prototype.hasOwnProperty.call(started, examId);
+            delete started[examId];
+
+            await student.update({
+                exam_answer: remaining.length > 0 ? remaining : null,
+                exam_started_at: Object.keys(started).length > 0 ? started : null
+            }, { transaction: t });
+
+            return {
+                code: 200,
+                body: {
+                    message: `Exam reset for ${studentId}. They can take it again.`,
+                    clearedSubmission,
+                    clearedStart
+                }
+            };
+        });
+
+        if (outcome.code === 200) {
+            console.log(`🔄 Exam ${examId} reset for ${studentId} by ${req.user?.username} (submission cleared: ${outcome.body.clearedSubmission})`);
+        }
+        return res.status(outcome.code).json(outcome.body);
+    } catch (error) {
+        console.error("Error resetting exam for student:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };

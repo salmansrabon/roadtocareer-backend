@@ -191,10 +191,20 @@ const Student = sequelize.define("Student", {
         type: DataTypes.TEXT('long'),
         allowNull: true
     },
+    quiz_started_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: 'When the student opened the quiz; the quiz clock is this + mcq_config.totalTime. NULL = not started.'
+    },
     exam_answer: {
         type: DataTypes.JSON,
         allowNull: true,
         comment: 'Array of exam submissions: [{exam_id, exam_question, studentId, student_answer, score, feedback, submission_time}]'
+    },
+    exam_started_at: {
+        type: DataTypes.JSON,
+        allowNull: true,
+        comment: 'When the student first opened each exam, as {"<exam_id>": "<ISO time>"}; the exam clock is this + exam_config.totalTime.'
     },
     get_certificate: {
         type: DataTypes.BOOLEAN,

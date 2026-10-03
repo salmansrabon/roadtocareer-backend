@@ -41,6 +41,7 @@ const pathModules = [
   require("./paths/teamsReviews"),
   require("./paths/images"),
   require("./paths/googleDrive"),
+  require("./paths/stats"),
 ];
 
 // Merge, refusing to let one module silently overwrite another's path. Two

@@ -26,6 +26,7 @@ const eventFormRoutes = require("./routes/eventFormRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const bookRoutes = require("./routes/bookRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const statsRoutes = require("./routes/statsRoutes");
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerDocument = require("./config/swagger");
@@ -91,6 +92,7 @@ app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/exam", examRoutes);
 app.use("/api/seo", seoRoutes);
 app.use("/api/blogs", blogRoutes);
+app.use("/api/stats", statsRoutes);
 app.use("/api", eventFormRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/books", bookRoutes);

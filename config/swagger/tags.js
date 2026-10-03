@@ -24,6 +24,7 @@ const tags = [
     { name: "Teams & Reviews", description: "Team Member Profiles and Course Reviews" },
     { name: "Images & File Management", description: "Asset Uploads & Certificate Storage" },
     { name: "Google Drive", description: "Course Video Materials & Google Drive Access" },
+    { name: "Stats", description: "Public Aggregate Numbers for the Landing Page" },
   ];
 
 module.exports = tags;

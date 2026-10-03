@@ -3,6 +3,8 @@ const Course = require("../models/Course");
 const sequelize = require("../config/db")
 const Student = require("../models/Student");
 const McqConfig = require("../models/McqConfig");
+const { notifyRoles } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 exports.addMCQ = async (req, res) => {
     try {
@@ -431,14 +433,46 @@ exports.submitQuiz = async (req, res) => {
                 return { code: 400, body: { message: "No answers to submit." } };
             }
 
+            // Only the call that actually finalizes the attempt notifies the admins;
+            // a repeat or double submit finds everything already stamped.
+            let justFinalized = null;
             if (entries.some(e => !e.submitted_at)) {
                 const submittedAt = new Date().toISOString();
                 const stamped = entries.map(e => (e.submitted_at ? e : { ...e, submitted_at: submittedAt }));
                 await student.update({ quiz_answer: JSON.stringify(stamped) }, { transaction: t });
+                justFinalized = {
+                    studentId: student.StudentId,
+                    studentName: student.student_name,
+                    courseId: student.CourseId,
+                    answered: entries.length,
+                    correct: entries.filter(e => e.isCorrect).length
+                };
             }
 
-            return { code: 200, body: { message: "Quiz submitted.", answered: entries.length } };
+            return { code: 200, body: { message: "Quiz submitted.", answered: entries.length }, justFinalized };
         });
+
+        // 🔔 Tell the admins (in-app only, no email) after the transaction has
+        // committed. notify() never throws, so it cannot fail the submission.
+        if (outcome.justFinalized) {
+            const q = outcome.justFinalized;
+            await notifyRoles(["admin"], {
+                type: NOTIFICATION_TYPES.QUIZ_SUBMITTED,
+                title: "New quiz submission",
+                body: `${q.studentName || q.studentId} submitted the quiz: ${q.correct} correct out of ${q.answered} answered.`,
+                link: `/admin/quizzes/results/${q.studentId}`,
+                actorUsername: q.studentId,
+                actorName: q.studentName || q.studentId,
+                entityType: ENTITY_TYPES.QUIZ_ATTEMPT,
+                entityId: q.studentId,
+                metadata: {
+                    studentId: q.studentId,
+                    courseId: q.courseId,
+                    answered: q.answered,
+                    correct: q.correct,
+                },
+            });
+        }
 
         return res.status(outcome.code).json(outcome.body);
     } catch (error) {

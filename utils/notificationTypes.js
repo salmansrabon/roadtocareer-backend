@@ -36,8 +36,14 @@ const NOTIFICATION_TYPES = Object.freeze({
     // → admins only: the weekly roll-up, mirroring the CSV summary email.
     PROFILE_INCOMPLETE_SUMMARY: "profile_incomplete_summary",
 
-    // Future types drop in here with no migration, e.g.:
-    // EXAM_GRADED: "exam_graded",
+    // → admins only, in-app only (no email): a student submitted a quiz / an exam
+    QUIZ_SUBMITTED: "quiz_submitted",
+    EXAM_SUBMITTED: "exam_submitted",
+    // → the single student whose exam an admin just evaluated (the evaluation
+    // email still goes out as well)
+    EXAM_EVALUATED: "exam_evaluated",
+
+    // Future types drop in here with no migration.
 });
 
 // Entity types, used for dedupe/suppression lookups and deep-linking.
@@ -51,6 +57,8 @@ const ENTITY_TYPES = Object.freeze({
     ATTENDANCE: "attendance",
     PROFILE: "profile",
     CLASS_RESOURCE: "class_resource",
+    QUIZ_ATTEMPT: "quiz_attempt",           // entityId = StudentId
+    EXAM_SUBMISSION: "exam_submission",     // entityId = "<examId>:<StudentId>"
 });
 
 module.exports = { NOTIFICATION_TYPES, ENTITY_TYPES };

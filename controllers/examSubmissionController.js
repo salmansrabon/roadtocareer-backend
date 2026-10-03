@@ -5,6 +5,8 @@ const Course = require("../models/Course");
 const { Op } = require("sequelize");
 const sequelize = require("../config/db");
 const { sendEmail } = require("../utils/emailHelper");
+const { notify, notifyRoles, wasRecentlyNotified } = require("../utils/notificationHelper");
+const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
 // A submit may arrive a little after the exam clock hits 0 (auto-submit at 0:00
 // plus network time); anything later than this is rejected.
@@ -234,6 +236,25 @@ exports.submitExamAnswers = async (req, res) => {
         // Update student's exam_answer field
         const updatedAnswers = [...existingAnswers, submissionData];
         await student.update({ exam_answer: updatedAnswers });
+
+        // 🔔 Tell the admins (in-app only, no email). notify() never throws, so a
+        // notification failure can never fail the submission. A second submit is
+        // already rejected above (409), so this fires once per student per exam.
+        await notifyRoles(["admin"], {
+            type: NOTIFICATION_TYPES.EXAM_SUBMITTED,
+            title: "New exam submission",
+            body: `${student.student_name} submitted "${examConfig.exam_title}".`,
+            link: `/admin/exams/${examId}/review/${student.StudentId}`,
+            actorUsername: student.StudentId,
+            actorName: student.student_name,
+            entityType: ENTITY_TYPES.EXAM_SUBMISSION,
+            entityId: `${examId}:${student.StudentId}`,
+            metadata: {
+                examId: parseInt(examId),
+                studentId: student.StudentId,
+                courseId: student.CourseId,
+            },
+        });
 
         res.status(201).json({
             message: "Exam submitted successfully",
@@ -481,6 +502,37 @@ exports.evaluateStudentSubmission = async (req, res) => {
         } catch (emailError) {
             console.error("Error sending email notification:", emailError);
             // Don't fail the evaluation if email fails - just log the error
+        }
+
+        // 🔔 In-app notification for the student, alongside the email. Same
+        // suppression window as assignment reviews: an admin re-saving the same
+        // evaluation a few times must not stack up identical notifications.
+        // notify() never throws, so it cannot fail the evaluation.
+        const evalEntityId = `${examId}:${student.StudentId}`;
+        const alreadyNotified = await wasRecentlyNotified({
+            recipients: student.StudentId,
+            type: NOTIFICATION_TYPES.EXAM_EVALUATED,
+            entityType: ENTITY_TYPES.EXAM_SUBMISSION,
+            entityId: evalEntityId,
+        });
+        if (!alreadyNotified) {
+            const maxScore = verifyExamSubmission.answers.reduce((sum, ans) => sum + (ans.max_score || 0), 0);
+            await notify({
+                recipients: student.StudentId,
+                type: NOTIFICATION_TYPES.EXAM_EVALUATED,
+                title: "Exam evaluated",
+                body: `Your exam "${verifyExamSubmission.exam_title || "Exam"}" has been evaluated. Score: ${totalScore} / ${maxScore}.`,
+                link: `/student/exams/${examId}/result`,
+                actorUsername: req.user?.username || null,
+                actorName: req.user?.username || null,
+                entityType: ENTITY_TYPES.EXAM_SUBMISSION,
+                entityId: evalEntityId,
+                metadata: {
+                    examId: parseInt(examId),
+                    score: totalScore,
+                    totalScore: maxScore,
+                },
+            });
         }
 
         res.status(200).json({

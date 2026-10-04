@@ -5,12 +5,12 @@ exports.createReview = async (req, res) => {
     try {
         const {
             name, image, batch, rating, description, designation,
-            company, university, facebook, whatsapp, linkedin, rEnable, priority
+            company, companyLogo, university, facebook, whatsapp, linkedin, rEnable, priority
         } = req.body;
 
         const review = await Review.create({
             name, image, batch, rating, description, designation,
-            company, university, facebook, whatsapp, linkedin, rEnable, priority
+            company, companyLogo, university, facebook, whatsapp, linkedin, rEnable, priority
         });
 
         return res.status(201).json({ success: true, message: "Review added successfully!", review });

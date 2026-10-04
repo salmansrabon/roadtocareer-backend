@@ -35,6 +35,11 @@ const Review = sequelize.define("Review", {
         type: DataTypes.STRING,
         allowNull: true
     },
+    // Admin-uploaded logo of `company` (URL). Not shown publicly yet.
+    companyLogo: {
+        type: DataTypes.STRING(500),
+        allowNull: true
+    },
     university: {
         type: DataTypes.STRING,
         allowNull: true

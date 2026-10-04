@@ -1040,6 +1040,38 @@ exports.getStudentById = async (req, res) => {
   }
 };
 
+// ✅ employment.company[].companyLogo is set by admin/teacher only (it feeds the public landing
+// page's "Where Our Students Work" strip). The update endpoint stores `employment` verbatim, so:
+//  - staff: keep whatever logo they sent (string only);
+//  - everyone else (the student saving their own profile): ignore any logo in the payload and carry
+//    over the stored one by company name, so a stale profile form can neither wipe an admin-added
+//    logo nor inject one. A renamed company loses its logo on purpose.
+const companyNameKey = (name) => String(name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const applyCompanyLogoPolicy = (incoming, stored, isStaff) => {
+  if (!incoming || !Array.isArray(incoming.company)) return incoming;
+
+  const storedLogos = new Map();
+  if (!isStaff && Array.isArray(stored?.company)) {
+    stored.company.forEach((entry) => {
+      const logo = typeof entry?.companyLogo === "string" ? entry.companyLogo.trim() : "";
+      const key = companyNameKey(entry?.companyName);
+      if (logo && key && !storedLogos.has(key)) storedLogos.set(key, logo);
+    });
+  }
+
+  const company = incoming.company.map((entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const { companyLogo, ...rest } = entry;
+    const logo = isStaff
+      ? (typeof companyLogo === "string" ? companyLogo.trim().slice(0, 500) : "")
+      : storedLogos.get(companyNameKey(entry.companyName)) || "";
+    return logo ? { ...rest, companyLogo: logo } : rest;
+  });
+
+  return { ...incoming, company };
+};
+
 exports.updateStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -1115,7 +1147,11 @@ exports.updateStudent = async (req, res) => {
       company: syncFromEmployment ? syncedCompany : company,
       designation: syncFromEmployment ? String(currentEmployer.designation ?? "").trim() : designation,
       experience,
-      employment: req.body.employment,
+      employment: applyCompanyLogoPolicy(
+        req.body.employment,
+        student.employment,
+        req.user?.role === "admin" || req.user?.role === "teacher"
+      ),
       education: req.body.education,
       skill: req.body.skill,
       projects: req.body.projects,

@@ -148,7 +148,7 @@ const getAnswersByAssignmentId = async (req, res) => {
         {
           model: AssignmentQuestion,
           as: 'Assignment',
-          attributes: ['id', 'Assignment_Title', 'Description', 'SubmissionDate', 'TotalScore']
+          attributes: ['id', 'Assignment_Title', 'Description', 'SubmissionDate', 'TotalScore', 'is_starred']
         },
         {
           model: Student,

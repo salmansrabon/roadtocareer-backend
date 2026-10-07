@@ -35,6 +35,12 @@ const AssignmentQuestion = sequelize.define('AssignmentQuestion', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    // Starred = must be submitted and passed before the certificate can unlock
+    is_starred: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
     createDate: {
         type: DataTypes.DATE,
         defaultValue: DataTypes.NOW

@@ -136,6 +136,12 @@ module.exports = {
           message: "Student details updated successfully",
           student: EX_STUDENT_PROFILE,
         }),
+        403: jsonRes("A student tried to set `get_certificate` to true while starred assignments are still outstanding (admin/teacher callers bypass this check)", {
+          message: "Certificate locked: complete all starred assignments first.",
+          pendingStarred: [
+            { id: 41, title: "Build a Page Object Model login test", reason: "awaiting_review", score: null, totalScore: 20 },
+          ],
+        }),
         404: errRes("Student not found", "Student not found"),
         500: SERVER_ERROR,
       },
@@ -300,6 +306,8 @@ module.exports = {
     get: {
       tags: ["Students"],
       summary: "Calculate course completion percentage and milestone progress",
+      description:
+        "Also returns the starred-assignment certificate gate. `starredGateMet` is false while any starred assignment in the student's course is not submitted, awaiting review, or reviewed below `starredPassPercent` of its total score. Each `pendingStarred` item has `reason` of `not_submitted`, `awaiting_review` or `failed`.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
@@ -313,6 +321,13 @@ module.exports = {
           attendancePercentage: 44,
           assignmentPercentage: 60,
           courseCompletionPercentage: 52,
+          starredTotal: 2,
+          starredPassPercent: 50,
+          starredGateMet: false,
+          pendingStarred: [
+            { id: 41, title: "Build a Page Object Model login test", reason: "failed", score: 6, totalScore: 20 },
+            { id: 44, title: "API testing with Postman", reason: "not_submitted", score: null, totalScore: 20 },
+          ],
         }),
         401: UNAUTHORIZED,
         500: jsonRes("Unexpected server error", {
@@ -362,6 +377,12 @@ module.exports = {
           },
         }),
         400: errRes("No image supplied", "Image data is required."),
+        403: jsonRes("A not-yet-unlocked student has outstanding starred assignments (admin/teacher callers bypass this check)", {
+          message: "Certificate locked: complete all starred assignments first.",
+          pendingStarred: [
+            { id: 41, title: "Build a Page Object Model login test", reason: "failed", score: 6, totalScore: 20 },
+          ],
+        }),
         404: errRes("Student not found", "Student not found."),
         500: SERVER_ERROR,
       },

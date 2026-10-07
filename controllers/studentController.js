@@ -25,6 +25,7 @@ const {
 } = require("../utils/attendanceHelper");
 const { calculateProfileScore } = require("../utils/profileScoreHelper");
 const { getCurrentOrLastEmployer } = require("../utils/employmentExperienceHelper");
+const { getStarredAssignmentStatus, STARRED_PASS_PERCENT } = require("../utils/starredAssignmentHelper");
 const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
 
 // ✅ Function to Generate Unique Student ID
@@ -1115,6 +1116,21 @@ exports.updateStudent = async (req, res) => {
       student.get_certificate &&
       (get_certificate === false || get_certificate === 0);
 
+    // ✅ Starred-assignment gate: a student cannot unlock their own certificate until every
+    // starred assignment in their course is submitted and passed. Admin/teacher ticking
+    // get_certificate is a deliberate override and skips the gate. The 80% completion rule
+    // itself is still enforced by the certificate page only.
+    const isStaffCaller = req.user?.role === "admin" || req.user?.role === "teacher";
+    if (certificateJustEnabled && !isStaffCaller) {
+      const starredStatus = await getStarredAssignmentStatus(studentId, student.CourseId);
+      if (!starredStatus.starredGateMet) {
+        return res.status(403).json({
+          message: "Certificate locked: complete all starred assignments first.",
+          pendingStarred: starredStatus.pendingStarred,
+        });
+      }
+    }
+
     // ✅ Find Corresponding User by username (mapped to StudentId)
     const user = await User.findOne({ where: { username: studentId } });
 
@@ -1935,8 +1951,13 @@ exports.getCourseProgress = async (req, res) => {
       (attendancePercentage + assignmentPercentage) / 2
     );
 
-    // 7. Return the results
+    // 7. Starred assignments gate the certificate on top of the completion percentage
+    const starredStatus = await getStarredAssignmentStatus(studentId, courseId);
+
+    // 8. Return the results
     res.json({
+      ...starredStatus,
+      starredPassPercent: STARRED_PASS_PERCENT,
       attendanceCount,
       assignmentCount,
       totalClass,
@@ -2101,6 +2122,20 @@ exports.saveCertificate = async (req, res) => {
 
     console.log("  - Student found:", student.student_name);
     console.log("  - Existing certificate:", student.certificate || "None");
+
+    // ✅ Same starred-assignment gate as updateStudent, so a locked student cannot mint a
+    // certificate by calling this endpoint directly. Students already unlocked
+    // (get_certificate true) and staff callers are unaffected.
+    const isStaffCaller = req.user?.role === "admin" || req.user?.role === "teacher";
+    if (!isStaffCaller && !student.get_certificate) {
+      const starredStatus = await getStarredAssignmentStatus(studentId, student.CourseId);
+      if (!starredStatus.starredGateMet) {
+        return res.status(403).json({
+          message: "Certificate locked: complete all starred assignments first.",
+          pendingStarred: starredStatus.pendingStarred,
+        });
+      }
+    }
 
     // ✅ Don't overwrite manually uploaded certificates or existing auto-generated ones
     if (

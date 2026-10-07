@@ -14,6 +14,7 @@ const EX_ASSIGNMENT_QUESTION = {
   Description: "Automate the login flow of saucedemo.com using POM and TestNG.",
   SubmissionDate: "2026-09-14T17:59:00.000Z",
   TotalScore: 20,
+  is_starred: true,
   createDate: "2026-09-01T05:00:00.000Z",
   updateDate: "2026-09-01T05:00:00.000Z",
 };
@@ -54,6 +55,13 @@ module.exports = {
                 },
                 SubmissionDate: { type: "string", format: "date-time", example: "2026-09-14T17:59:00.000Z" },
                 TotalScore: { type: "integer", example: 20 },
+                is_starred: {
+                  type: "boolean",
+                  default: false,
+                  description:
+                    "Starred assignments must be submitted and reviewed with at least 50% of TotalScore before a student can unlock their certificate",
+                  example: true,
+                },
               },
             },
           },

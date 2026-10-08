@@ -459,6 +459,72 @@ exports.studentSignup = async (req, res) => {
   }
 };
 
+// Course completion = average of attendance % and graded-assignment %, each capped
+// at 100. Shared by the single-student progress endpoint and the admin list so the
+// two always agree. Returns the two parts unrounded; only the overall is rounded.
+const calcCourseCompletion = (attendanceCount, totalClass, assignmentCount, totalAssignments) => {
+  const attendancePercentage = Math.min((attendanceCount / totalClass) * 100, 100);
+  const assignmentPercentage = Math.min((assignmentCount / totalAssignments) * 100, 100);
+  return {
+    attendancePercentage,
+    assignmentPercentage,
+    courseCompletionPercentage: Math.round((attendancePercentage + assignmentPercentage) / 2),
+  };
+};
+
+// Adds `courseCompletion` (percent, for the student's CURRENT course, same basis as
+// getCourseProgress) to each plain student row. Two grouped queries for the whole
+// page of students instead of one per row.
+const addCourseCompletion = async (rows) => {
+  const courseIds = [...new Set(rows.map((r) => r.Course?.courseId).filter(Boolean))];
+  if (!rows.length || !courseIds.length) {
+    return rows.map((r) => ({ ...r, courseCompletion: null }));
+  }
+
+  const [totals, graded] = await Promise.all([
+    AssignmentQuestion.findAll({
+      attributes: ["courseId", [Sequelize.fn("COUNT", Sequelize.col("id")), "total"]],
+      where: { courseId: { [Op.in]: courseIds } },
+      group: ["courseId"],
+      raw: true,
+    }),
+    AssignmentAnswer.findAll({
+      attributes: ["StudentId", [Sequelize.fn("COUNT", Sequelize.col("AssignmentAnswer.id")), "graded"]],
+      where: { StudentId: { [Op.in]: rows.map((r) => r.StudentId) }, Score: { [Op.ne]: null } },
+      include: [
+        {
+          model: AssignmentQuestion,
+          as: "Assignment",
+          attributes: ["courseId"],
+          where: { courseId: { [Op.in]: courseIds } },
+          required: true,
+        },
+      ],
+      group: ["AssignmentAnswer.StudentId", "Assignment.courseId"],
+      raw: true,
+    }),
+  ]);
+
+  const totalByCourse = Object.fromEntries(totals.map((t) => [t.courseId, Number(t.total)]));
+  const gradedByStudentCourse = {};
+  graded.forEach((g) => {
+    gradedByStudentCourse[`${g.StudentId}|${g["Assignment.courseId"]}`] = Number(g.graded);
+  });
+
+  return rows.map((r) => {
+    const cid = r.Course?.courseId;
+    if (!cid) return { ...r, courseCompletion: null };
+    const attendanceCount = getBatchEntries(r.Attendance?.attendanceList, r.Attendance?.courseId, cid).length;
+    const { courseCompletionPercentage } = calcCourseCompletion(
+      attendanceCount,
+      r.Course?.total_class || 30,
+      gradedByStudentCourse[`${r.StudentId}|${cid}`] || 0,
+      totalByCourse[cid] || 1 // no assignments: avoid division by zero, as getCourseProgress does
+    );
+    return { ...r, courseCompletion: courseCompletionPercentage };
+  });
+};
+
 exports.getAllStudents = async (req, res) => {
   try {
     const {
@@ -602,7 +668,7 @@ exports.getAllStudents = async (req, res) => {
         totalStudents,
         totalPages: Math.ceil(totalStudents / limitNumber),
         currentPage: pageNumber,
-        students: filtered.slice(offset, offset + limitNumber),
+        students: await addCourseCompletion(filtered.slice(offset, offset + limitNumber)),
       });
     }
 
@@ -631,7 +697,7 @@ exports.getAllStudents = async (req, res) => {
       totalStudents,
       totalPages: Math.ceil(totalStudents / limitNumber),
       currentPage: pageNumber,
-      students: mappedStudents,
+      students: await addCourseCompletion(mappedStudents),
     });
   } catch (error) {
     console.error("Error fetching students:", error);
@@ -1942,14 +2008,9 @@ exports.getCourseProgress = async (req, res) => {
       if (count > 0) totalAssignments = count;
     }
 
-    // 5. Calculate percentages
-    const attendancePercentage = Math.min((attendanceCount / totalClass) * 100, 100);
-    const assignmentPercentage = Math.min((assignmentCount / totalAssignments) * 100, 100);
-
-    // 6. Overall completion is the average of the two
-    const courseCompletionPercentage = Math.round(
-      (attendancePercentage + assignmentPercentage) / 2
-    );
+    // 5-6. Percentages, and overall completion = the average of the two
+    const { attendancePercentage, assignmentPercentage, courseCompletionPercentage } =
+      calcCourseCompletion(attendanceCount, totalClass, assignmentCount, totalAssignments);
 
     // 7. Starred assignments gate the certificate on top of the completion percentage
     const starredStatus = await getStarredAssignmentStatus(studentId, courseId);

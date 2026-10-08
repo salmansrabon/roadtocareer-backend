@@ -286,6 +286,14 @@ exports.startQuiz = async (req, res) => {
             }
 
             if (state.status === "fresh") {
+                // A NEW attempt may only begin while the quiz is active and inside
+                // its start/end window. Resuming one already in progress (above) is
+                // not blocked: the student's own clock governs it.
+                const opensAt = new Date(config.start_datetime).getTime();
+                const closesAt = new Date(config.end_datetime).getTime();
+                if (!config.isActive || now < opensAt || now > closesAt) {
+                    return { code: 403, body: { message: "Quiz is not available at this time.", code: "QUIZ_UNAVAILABLE" } };
+                }
                 startedAt = wholeSecond(now);
                 await student.update({ quiz_started_at: startedAt }, { transaction: t });
             }
@@ -430,7 +438,22 @@ exports.submitQuiz = async (req, res) => {
 
             const entries = parseQuizAnswers(student.quiz_answer);
             if (entries.length === 0) {
-                return { code: 400, body: { message: "No answers to submit." } };
+                // Never started: nothing to end.
+                if (!student.quiz_started_at) {
+                    return { code: 400, body: { message: "No answers to submit." } };
+                }
+                // Started but nothing answered (e.g. the page auto-submitted after
+                // the student left the quiz tab). There is no answer to stamp
+                // `submitted_at` on, so end the attempt by moving the clock to
+                // already-elapsed; the student cannot resume it. Idempotent.
+                const config = await McqConfig.findOne({ where: { CourseId: student.CourseId }, transaction: t });
+                if (config && getQuizState(student.quiz_started_at, entries, config.totalTime).status === "in_progress") {
+                    await student.update(
+                        { quiz_started_at: wholeSecond(Date.now() - config.totalTime * 60 * 1000) },
+                        { transaction: t }
+                    );
+                }
+                return { code: 200, body: { message: "Quiz ended with no answers.", answered: 0 } };
             }
 
             // Only the call that actually finalizes the attempt notifies the admins;
@@ -545,6 +568,21 @@ exports.getStudentResult = async (req, res) => {
 
         // ✅ Ensure quiz_answer is an array
         if (!Array.isArray(parsedQuizAnswer) || parsedQuizAnswer.length === 0) {
+            // An attempt that ended with nothing answered (time ran out, or the
+            // page auto-submitted after the student left the tab) is a real
+            // submission scored 0, matching the admin results list.
+            const endedConfig = student.quiz_started_at
+                ? await McqConfig.findOne({ where: { CourseId: student.CourseId } })
+                : null;
+            if (endedConfig && getQuizState(student.quiz_started_at, [], endedConfig.totalTime).status === "expired") {
+                return res.status(200).json({
+                    student_name: student.student_name,
+                    StudentId: studentId,
+                    totalMarks: 0,
+                    totalQuestions: endedConfig.totalQuestion,
+                    answerSheet: []
+                });
+            }
             return res.status(404).json({ message: "No MCQ responses found for this student." });
         }
 
@@ -658,12 +696,18 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
         // ✅ Fetch all students for the given CourseId
         const students = await Student.findAll({
             where: { CourseId: courseId },
-            attributes: ["StudentId", "student_name", "quiz_answer"]
+            attributes: ["StudentId", "student_name", "quiz_answer", "quiz_started_at"]
         });
 
+        // No students / no submissions yet is an empty list, not an error —
+        // the admin results and error-stats pages render their own empty state.
         if (!students.length) {
-            return res.status(404).json({ message: "No students found for this course." });
+            return res.status(200).json({ courseId, results: [] });
         }
+
+        const mcqConfig = await McqConfig.findOne({
+            where: { CourseId: courseId }
+        });
 
         const studentResults = [];
 
@@ -679,6 +723,23 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
             }
 
             if (!Array.isArray(parsedQuizAnswer) || parsedQuizAnswer.length === 0) {
+                // Started but answered nothing and the attempt is over (time ran
+                // out, or the page auto-submitted after the student left the tab):
+                // still a submission, scored 0, so the admin can see and reset it.
+                // The attempt's end is when its clock ran out.
+                if (student.quiz_started_at && mcqConfig) {
+                    const state = getQuizState(student.quiz_started_at, [], mcqConfig.totalTime);
+                    if (state.status === "expired") {
+                        studentResults.push({
+                            StudentId: student.StudentId,
+                            student_name: student.student_name,
+                            totalMarks: 0,
+                            totalQuestions: mcqConfig.totalQuestion,
+                            answerSheet: [],
+                            submittedAt: new Date(state.endsAt).toISOString()
+                        });
+                    }
+                }
                 continue;
             }
 
@@ -715,10 +776,6 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                     .pop();
             }
 
-            const mcqConfig = await McqConfig.findOne({
-                where: { CourseId: courseId }
-            });
-
             studentResults.push({
                 StudentId: student.StudentId,
                 student_name: student.student_name,
@@ -729,11 +786,7 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
             });
         }
 
-        if (studentResults.length === 0) {
-            return res.status(404).json({ message: "No quiz results found for this course." });
-        }
-
-        return res.status(200).json({ courseId, results: studentResults});
+        return res.status(200).json({ courseId, results: studentResults });
 
     } catch (error) {
         console.error("Error fetching all students' MCQ results:", error);

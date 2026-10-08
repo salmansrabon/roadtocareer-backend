@@ -49,7 +49,8 @@ exports.getMcqConfigByCourse = async (req, res) => {
             }
         } else {
             // ✅ Fetch all configurations when CourseId is not provided
-            configs = await McqConfig.findAll();
+            // Latest created first (id breaks ties between same-second inserts).
+            configs = await McqConfig.findAll({ order: [["createdAt", "DESC"], ["id", "DESC"]] });
 
             if (!configs.length) {
                 return res.status(404).json({ message: "No MCQ Configs available." });

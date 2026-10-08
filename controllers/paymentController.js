@@ -9,6 +9,15 @@ const { notify } = require("../utils/notificationHelper");
 const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 Payment.belongsTo(Student, { foreignKey: "studentId", targetKey: "StudentId" });
 
+// Job Holders pay the regular fee, everyone else the discounted fee. Same rule
+// as the student profile (studentController.getStudentById), so the payments
+// page, stored due and profile agree. Falls back to the discounted fee when a
+// package has no regular fee set.
+const getCourseFeeFor = (student, packageDetails) => {
+    const useRegular = student?.profession === "Job Holder" && Number(packageDetails.regularFee) > 0;
+    return parseFloat(useRegular ? packageDetails.regularFee : packageDetails.discountedFee);
+};
+
 exports.addPayment = async (req, res) => {
     try {
         const {
@@ -30,7 +39,6 @@ exports.addPayment = async (req, res) => {
         if (!packageDetails) {
             return res.status(404).json({ success: false, message: "Package not found!" });
         }
-        const courseFee = parseFloat(packageDetails.discountedFee);
 
         // 🔹 Get Previous Payments for the Student
         const previousPayments = await Payment.findAll({ where: { studentId, packageId } });
@@ -40,6 +48,7 @@ exports.addPayment = async (req, res) => {
         if (!student) {
             return res.status(404).json({ success: false, message: "Student not found!" });
         }
+        const courseFee = getCourseFeeFor(student, packageDetails);
 
         // 🔹 Calculate Total Paid + Adjustments
         const totalPaid = previousPayments.reduce((sum, payment) => sum + parseFloat(payment.paidAmount || 0), 0) + parseFloat(paidAmount || 0);
@@ -146,13 +155,13 @@ exports.updatePayment = async (req, res) => {
         if (!packageDetails) {
             return res.status(404).json({ success: false, message: "Package not found!" });
         }
-        const courseFee = parseFloat(packageDetails.discountedFee);
 
         // 🔹 Get Student Details
         const student = await Student.findOne({ where: { StudentId: existingPayment.studentId } });
         if (!student) {
             return res.status(404).json({ success: false, message: "Student not found!" });
         }
+        const courseFee = getCourseFeeFor(student, packageDetails);
 
         // 🔹 Get all payments for this student (excluding current one being updated)
         const otherPayments = await Payment.findAll({ 
@@ -242,8 +251,8 @@ exports.getPaymentHistory = async (req, res) => {
             return res.status(404).json({ success: false, message: "Package details not found!" });
         }
 
-        const { id: packageId, discountedFee } = packageDetails;
-        const courseFee = parseFloat(discountedFee);
+        const { id: packageId } = packageDetails;
+        const courseFee = getCourseFeeFor(student, packageDetails);
 
         // 🔹 Fetch Payment records for the student
         const payments = await Payment.findAll({
@@ -260,6 +269,16 @@ exports.getPaymentHistory = async (req, res) => {
         // 🔹 Calculate Remaining Balance
         const remainingBalance = courseFee - totalPaid - totalDueAdjustment;
 
+        // 🔹 Each row's remaining balance is recomputed against the current fee
+        // instead of trusting the stored column, which was computed with whatever
+        // fee applied when the payment was saved (the discounted fee, for job
+        // holders recorded before this fix). Display only; nothing is written.
+        let runningBalance = courseFee;
+        const paymentsWithBalance = payments.map((payment) => {
+            runningBalance -= parseFloat(payment.paidAmount || 0) + parseFloat(payment.dueAdjustmentAmount || 0);
+            return { ...payment.toJSON(), remainingBalance: Math.max(runningBalance, 0) };
+        });
+
         res.status(200).json({
             success: true,
             studentId,
@@ -271,7 +290,7 @@ exports.getPaymentHistory = async (req, res) => {
             courseFee,
             totalPaid,
             remainingBalance, // ✅ Added Remaining Balance
-            payments: payments.length ? payments : [] // ✅ Ensures empty array instead of null
+            payments: paymentsWithBalance // ✅ Empty array (not null) when there are none
         });
 
     } catch (error) {
@@ -532,7 +551,7 @@ exports.deletePaymentById = async (req, res) => {
                 // No payments left at all — back to "not started", not a paid-in-full 0.
                 await student.update({ due: null });
             } else {
-                const courseFee = parseFloat(packageDetails.discountedFee);
+                const courseFee = getCourseFeeFor(student, packageDetails);
                 const totalPaid = remainingPayments.reduce((sum, p) => sum + parseFloat(p.paidAmount || 0), 0);
                 const totalAdjustment = remainingPayments.reduce((sum, p) => sum + parseFloat(p.dueAdjustmentAmount || 0), 0);
                 const remainingBalance = courseFee - totalPaid - totalAdjustment;

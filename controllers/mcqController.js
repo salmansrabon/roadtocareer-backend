@@ -737,7 +737,8 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                             totalQuestions: mcqConfig.totalQuestion,
                             answerSheet: [],
                             startedAt: new Date(student.quiz_started_at).toISOString(),
-                            submittedAt: new Date(state.endsAt).toISOString()
+                            submittedAt: new Date(state.endsAt).toISOString(),
+                            status: "submitted"
                         });
                     }
                 }
@@ -767,14 +768,30 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                 });
             }
 
-            // Find the latest attempted_at in answerSheet (if available)
-            let submittedAt = null;
-            if (answerSheet.length > 0) {
-                submittedAt = answerSheet
-                    .map(ans => ans.attempted_at)
-                    .filter(Boolean)
-                    .sort()
-                    .pop();
+            // Submission time is only meaningful once the attempt is over. While
+            // the student is still answering, answers are saved one by one, so
+            // the latest attempted_at is NOT a submission time — report
+            // "in_progress" with no submittedAt instead.
+            const latestAttemptedAt = answerSheet
+                .map(ans => ans.attempted_at)
+                .filter(Boolean)
+                .sort()
+                .pop() || null;
+
+            let status = "submitted";
+            let submittedAt = latestAttemptedAt;
+            if (mcqConfig && student.quiz_started_at) {
+                const state = getQuizState(student.quiz_started_at, parsedQuizAnswer, mcqConfig.totalTime);
+                if (state.status === "in_progress") {
+                    status = "in_progress";
+                    submittedAt = null;
+                } else if (state.status === "expired") {
+                    // Time ran out without a final submit: the attempt ended when the clock did.
+                    submittedAt = new Date(state.endsAt).toISOString();
+                } else {
+                    // Prefer the explicit final-submit stamp over the last answer time.
+                    submittedAt = parsedQuizAnswer.find(e => e.submitted_at)?.submitted_at || latestAttemptedAt;
+                }
             }
 
             studentResults.push({
@@ -787,7 +804,8 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                 startedAt: student.quiz_started_at
                     ? new Date(student.quiz_started_at).toISOString()
                     : null,
-                submittedAt
+                submittedAt,
+                status
             });
         }
 

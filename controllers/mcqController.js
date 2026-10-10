@@ -736,6 +736,7 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                             totalMarks: 0,
                             totalQuestions: mcqConfig.totalQuestion,
                             answerSheet: [],
+                            startedAt: new Date(student.quiz_started_at).toISOString(),
                             submittedAt: new Date(state.endsAt).toISOString()
                         });
                     }
@@ -782,6 +783,10 @@ exports.getAllStudentsResultsByCourse = async (req, res) => {
                 totalMarks: totalMarks,
                 totalQuestions: mcqConfig ? mcqConfig.totalQuestion : 0,
                 answerSheet,
+                // null for attempts that predate quiz_started_at
+                startedAt: student.quiz_started_at
+                    ? new Date(student.quiz_started_at).toISOString()
+                    : null,
                 submittedAt
             });
         }

@@ -80,6 +80,7 @@ const components = {
           short_description: { type: "string", example: "Java, Selenium, Playwright and CI/CD." },
           is_enabled: { type: "boolean", example: true },
           is_latest: { type: "boolean", example: true },
+          attendance_tracking: { type: "boolean", example: true },
           enrollment: { type: "boolean", example: true },
           class_days: { type: "array", items: { type: "string" }, example: ["Friday", "Saturday"] },
           class_time: { type: "string", example: "20:00:00" },

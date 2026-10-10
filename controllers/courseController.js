@@ -76,6 +76,7 @@ exports.getCourseDetails = async (req, res) => {
                 "short_description",
                 "is_enabled",
                 "is_latest",
+                "attendance_tracking",
                 "enrollment",
                 "enrollment_start_date",
                 "enrollment_end_date",
@@ -122,7 +123,7 @@ exports.getCoursesList = async (req, res) => {
             where: Object.keys(condition).length ? condition : undefined,
             attributes: [
                 "courseId", "batch_no", "course_title", "drive_folder_id",
-                "short_description", "is_enabled", "is_latest", "enrollment", "enrollment_start_date",
+                "short_description", "is_enabled", "is_latest", "attendance_tracking", "enrollment", "enrollment_start_date",
                 "enrollment_end_date", "orientation_date", "class_start_date", "class_days",
                 "class_time", "course_image", "total_class"
             ],
@@ -154,6 +155,7 @@ exports.updateCourse = async (req, res) => {
             drive_folder_id,
             is_enabled,
             is_latest,
+            attendance_tracking,
             enrollment,
             enrollment_start_date,
             enrollment_end_date,
@@ -185,12 +187,39 @@ exports.updateCourse = async (req, res) => {
             class_days,
             class_time,
             course_image,
+            ...(attendance_tracking !== undefined && { attendance_tracking }),
             ...(total_class !== undefined && { total_class })
         });
 
         res.status(200).json({ message: "Course updated successfully!", course });
     } catch (error) {
         console.error("Error updating course:", error);
+        res.status(500).json({ message: "Internal server error." });
+    }
+};
+
+// Start/stop the attendance reminder cron for one course. Dedicated endpoint
+// (not updateCourse) because updateCourse rewrites every column from the body.
+exports.setAttendanceTracking = async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { enabled } = req.body;
+
+        if (typeof enabled !== "boolean") {
+            return res.status(400).json({ message: "`enabled` must be true or false." });
+        }
+
+        const course = await Course.findOne({ where: { courseId } });
+        if (!course) return res.status(404).json({ message: "Course not found." });
+
+        await course.update({ attendance_tracking: enabled });
+
+        res.status(200).json({
+            message: `Attendance tracking ${enabled ? "started" : "stopped"}.`,
+            attendance_tracking: course.attendance_tracking
+        });
+    } catch (error) {
+        console.error("Error updating attendance tracking:", error);
         res.status(500).json({ message: "Internal server error." });
     }
 };

@@ -125,10 +125,10 @@ async function runAttendanceReminderJob() {
 
   try {
     const courses = await Course.findAll({
-      where: { is_latest: true },
+      where: { is_latest: true, attendance_tracking: true },
     });
 
-    console.log(`[attendanceReminderJob] Found ${courses.length} course(s) flagged is_latest.`);
+    console.log(`[attendanceReminderJob] Found ${courses.length} course(s) flagged is_latest with attendance tracking on.`);
 
     for (const course of courses) {
       try {
@@ -161,7 +161,7 @@ async function runAttendanceReminderJob() {
           const attendanceList = getBatchEntries(
             student.Attendance?.attendanceList,
             student.Attendance?.courseId,
-            student.Attendance?.courseId
+            course.courseId
           );
           const attendedToday = hasAttendedOnDate(attendanceList, todayLocal);
           if (attendedToday) continue;

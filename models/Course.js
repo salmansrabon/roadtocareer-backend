@@ -37,6 +37,15 @@ const Course = sequelize.define("Course", {
         type: DataTypes.BOOLEAN,
         defaultValue: false
     },
+    // Admin start/stop switch (course config page). false => the attendance
+    // reminder cron skips this course even when is_latest is true. Defaults to
+    // stopped because new courses are never is_latest; the migration backfills
+    // existing rows to match is_latest.
+    attendance_tracking: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
     enrollment: {
         type: DataTypes.BOOLEAN,
         defaultValue: true

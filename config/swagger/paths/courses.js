@@ -79,6 +79,31 @@ module.exports = {
       },
     },
   },
+  "/api/courses/attendance-tracking/{courseId}": {
+    put: {
+      tags: ["Courses"],
+      summary: "Start or stop attendance tracking (reminder cron) for a course",
+      parameters: [{ name: "courseId", in: "path", required: true, schema: { type: "string", example: "SDET-B7" } }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["enabled"],
+              properties: { enabled: { type: "boolean", example: false } },
+            },
+          },
+        },
+      },
+      responses: {
+        200: jsonRes("Tracking updated", { message: "Attendance tracking stopped.", attendance_tracking: false }),
+        400: errRes("`enabled` is not a boolean", "`enabled` must be true or false."),
+        404: errRes("Course not found", "Course not found."),
+        500: errRes("Unexpected server error", "Internal server error."),
+      },
+    },
+  },
   "/api/courses/delete/{courseId}": {
     delete: {
       tags: ["Courses"],

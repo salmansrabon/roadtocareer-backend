@@ -135,7 +135,7 @@ module.exports = {
   "/api/exam/student/active": {
     get: {
       tags: ["Exams"],
-      summary: "Get active available exams for the logged-in student's course/batch",
+      summary: "Get active and upcoming (not yet ended) exams for the logged-in student's course/batch",
       security: [{ BearerAuth: [] }],
       responses: {
         200: jsonRes("Active exams list", {

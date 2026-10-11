@@ -265,12 +265,14 @@ exports.getActiveExamsForStudent = async (req, res) => {
         const nowInBangladesh = new Date(now.getTime() + bangladeshOffset);
         console.log("Current time adjusted for Bangladesh comparison:", nowInBangladesh.toISOString());
         
-        // Filter exams that are currently active - treating stored times as Bangladesh local
+        // Return every exam that has not ended yet - treating stored times as Bangladesh local.
+        // Upcoming exams (start in the future) are included on purpose so students can see
+        // them as "Scheduled", like the MCQ quiz. Starting early is still blocked by
+        // examSubmissionController.getExamForStudent.
         const activeExams = await ExamConfig.findAll({
             where: {
                 courseId: student.CourseId,
                 isActive: true,
-                start_datetime: { [Op.lte]: nowInBangladesh },
                 end_datetime: { [Op.gte]: nowInBangladesh }
             },
             include: [{

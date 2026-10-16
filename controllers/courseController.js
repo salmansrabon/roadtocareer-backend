@@ -142,7 +142,7 @@ exports.getCoursesList = async (req, res) => {
                 "enrollment_end_date", "orientation_date", "class_start_date", "class_days",
                 "class_time", "course_image", "total_class",
                 "instructor_name", "instructor_designation", "instructor_company", "instructor_bio",
-                "instructor_photo"
+                "instructor_photo", "createdAt"
             ],
             include: [
                 {

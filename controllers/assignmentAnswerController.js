@@ -186,7 +186,7 @@ const getAnswersByStudentId = async (req, res) => {
         {
           model: AssignmentQuestion,
           as: 'Assignment',
-          attributes: ['id', 'Assignment_Title', 'SubmissionDate', 'courseId', 'batch_no'],
+          attributes: ['id', 'Assignment_Title', 'TotalScore', 'SubmissionDate', 'courseId', 'batch_no'],
           where: Object.keys(assignmentWhere).length ? assignmentWhere : undefined,
           required: Object.keys(assignmentWhere).length > 0,
         }

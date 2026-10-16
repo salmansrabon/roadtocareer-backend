@@ -19,7 +19,12 @@ exports.createCourse = async (req, res) => {
             class_days, // Array
             class_time,
             course_image,
-            total_class
+            total_class,
+            instructor_name,
+            instructor_designation,
+            instructor_company,
+            instructor_bio,
+            instructor_photo
         } = req.body;
 
         // Validate required fields
@@ -50,7 +55,12 @@ exports.createCourse = async (req, res) => {
             class_days,
             class_time,
             course_image,
-            total_class: total_class || 30
+            total_class: total_class || 30,
+            instructor_name: instructor_name?.trim() || null,
+            instructor_designation: instructor_designation?.trim() || null,
+            instructor_company: instructor_company?.trim() || null,
+            instructor_bio: instructor_bio?.trim() || null,
+            instructor_photo: instructor_photo || null
         });
 
         res.status(201).json({ message: "Course created successfully", course: newCourse });
@@ -86,6 +96,11 @@ exports.getCourseDetails = async (req, res) => {
                 "class_time",
                 "course_image",
                 "total_class",
+                "instructor_name",
+                "instructor_designation",
+                "instructor_company",
+                "instructor_bio",
+                "instructor_photo",
                 "createdAt",
                 "updatedAt"
             ],
@@ -125,7 +140,9 @@ exports.getCoursesList = async (req, res) => {
                 "courseId", "batch_no", "course_title", "drive_folder_id",
                 "short_description", "is_enabled", "is_latest", "attendance_tracking", "enrollment", "enrollment_start_date",
                 "enrollment_end_date", "orientation_date", "class_start_date", "class_days",
-                "class_time", "course_image", "total_class"
+                "class_time", "course_image", "total_class",
+                "instructor_name", "instructor_designation", "instructor_company", "instructor_bio",
+                "instructor_photo"
             ],
             include: [
                 {
@@ -164,7 +181,12 @@ exports.updateCourse = async (req, res) => {
             class_days,
             class_time,
             course_image,
-            total_class
+            total_class,
+            instructor_name,
+            instructor_designation,
+            instructor_company,
+            instructor_bio,
+            instructor_photo
         } = req.body;
 
         // ✅ Check if Course Exists
@@ -188,7 +210,13 @@ exports.updateCourse = async (req, res) => {
             class_time,
             course_image,
             ...(attendance_tracking !== undefined && { attendance_tracking }),
-            ...(total_class !== undefined && { total_class })
+            ...(total_class !== undefined && { total_class }),
+            // Blank string clears the field; omitted leaves it untouched.
+            ...(instructor_name !== undefined && { instructor_name: instructor_name?.trim() || null }),
+            ...(instructor_designation !== undefined && { instructor_designation: instructor_designation?.trim() || null }),
+            ...(instructor_company !== undefined && { instructor_company: instructor_company?.trim() || null }),
+            ...(instructor_bio !== undefined && { instructor_bio: instructor_bio?.trim() || null }),
+            ...(instructor_photo !== undefined && { instructor_photo: instructor_photo || null })
         });
 
         res.status(200).json({ message: "Course updated successfully!", course });

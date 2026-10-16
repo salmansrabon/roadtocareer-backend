@@ -34,6 +34,11 @@ const EX_COURSE = {
   class_time: "20:00:00",
   course_image: "/images/courses/sdet-masterclass.png",
   total_class: 32,
+  instructor_name: "Jane Doe",
+  instructor_designation: "Senior SDET",
+  instructor_company: "Tech Corp",
+  instructor_bio: "10+ years in test automation.",
+  instructor_photo: "/images/instructors/1760000000000-jane.jpg",
   createdAt: "2026-06-20T09:00:00.000Z",
   updatedAt: "2026-08-25T10:12:00.000Z",
 };

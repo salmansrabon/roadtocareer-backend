@@ -82,6 +82,27 @@ const Course = sequelize.define("Course", {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 30
+    },
+    // Optional instructor details shown at the top of the public course card.
+    instructor_name: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    instructor_designation: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    instructor_company: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    instructor_bio: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    instructor_photo: {
+        type: DataTypes.STRING,
+        allowNull: true
     }
 }, {
     tableName: "courses",

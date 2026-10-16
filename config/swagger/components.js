@@ -85,6 +85,11 @@ const components = {
           class_days: { type: "array", items: { type: "string" }, example: ["Friday", "Saturday"] },
           class_time: { type: "string", example: "20:00:00" },
           total_class: { type: "integer", example: 32 },
+          instructor_name: { type: "string", nullable: true, example: "Jane Doe" },
+          instructor_designation: { type: "string", nullable: true, example: "Senior SDET" },
+          instructor_company: { type: "string", nullable: true, example: "Tech Corp" },
+          instructor_bio: { type: "string", nullable: true, example: "10+ years in test automation." },
+          instructor_photo: { type: "string", nullable: true, description: "Photo URL (uploaded via POST /api/images/instructors/upload)", example: "/images/instructors/1760000000000-jane.jpg" },
         },
       },
       PaymentAddRequest: {

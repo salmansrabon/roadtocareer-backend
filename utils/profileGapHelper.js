@@ -376,7 +376,7 @@ function buildMilestoneLines(gap, usedItemKeys = new Set()) {
 // Replaces the old static buildReminderEmailBody — same voice/sign-off, but
 // the quick-win list and milestone path are computed from the student's real
 // data via getProfileGapAnalysis, not a fixed generic bullet list.
-function buildPersonalizedReminderBody(student, gap) {
+function buildPersonalizedReminderBody(student, gap, accountCount = 1) {
   const { currentScore, threshold, employmentStatus, missingItems, pointsToThreshold } = gap;
 
   // Quick wins toward the threshold: skip optional/milestone items, and skip
@@ -418,11 +418,18 @@ function buildPersonalizedReminderBody(student, gap) {
     ? `\nAfter reaching ${threshold}%, here's your path toward 100%:\n${milestoneLines.join("\n")}\n`
     : "";
 
+  // TASK-63: a student registered for several courses has one profile per
+  // account but gets a single reminder per email — say which account it is
+  // about and that the Profile menu switches between them.
+  const multiAccountNote = accountCount > 1
+    ? `You have ${accountCount} accounts registered with this email. This reminder is about ${student.courseTitle ? `${student.courseTitle} (ID: ${student.StudentId})` : `ID ${student.StudentId}`}. After logging in, you can switch between your accounts from the Profile menu at the top right.\n\n`
+    : "";
+
   return `Dear ${student.student_name},
 
 We noticed that your Road to SDET profile is currently ${currentScore}% complete.
 
-${almostThereNote}Please update your profile and increase your profile completion score to at least ${threshold}%.
+${multiAccountNote}${almostThereNote}Please update your profile and increase your profile completion score to at least ${threshold}%.
 ${quickWinBlock}${milestoneBlock}
 Keeping your profile complete and up to date increases your visibility and helps us better evaluate you for internships, job opportunities, and recruiter recommendations.
 

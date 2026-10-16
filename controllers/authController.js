@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { Op } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
+const { getLinkedStudentAccounts } = require("../utils/linkedAccountsHelper");
 
 // TASK-47: dual-write the JWT into an httpOnly cookie alongside the existing
 // response-body token (backward compatible — Bearer-header clients are
@@ -107,6 +108,55 @@ exports.login = async (req, res) => {
         });
     } catch (error) {
         console.error("Error logging in:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// TASK-63: other student accounts registered with the caller's email, for the
+// profile-dropdown account switcher. Empty for admin/teacher and single-account students.
+exports.getLinkedAccounts = async (req, res) => {
+    try {
+        const accounts = await getLinkedStudentAccounts(req.user.username);
+        res.json({ accounts });
+    } catch (error) {
+        console.error("Error fetching linked accounts:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// TASK-63: switch the session to another account registered with the same email,
+// without a password. The caller is already authenticated; the target must be in
+// their server-derived linked-accounts list (same email, student, isValid = 1, not
+// self). Every rejection is the same 403 so account names cannot be probed.
+exports.switchAccount = async (req, res) => {
+    try {
+        const { username } = req.body || {};
+        const linked = typeof username === "string" ? await getLinkedStudentAccounts(req.user.username) : [];
+        if (!linked.some((account) => account.username === username)) {
+            return res.status(403).json({ message: "Cannot switch to this account" });
+        }
+
+        const target = await User.findOne({ where: { username } });
+        if (!target) {
+            return res.status(403).json({ message: "Cannot switch to this account" });
+        }
+
+        // Reuse the current token's expiry: switching must not extend the session.
+        const token = jwt.sign(
+            { id: target.id, username: target.username, role: target.role, exp: req.user.exp },
+            process.env.JWT_SECRET
+        );
+        const remainingMs = Math.max(req.user.exp * 1000 - Date.now(), 0);
+        res.cookie(AUTH_COOKIE_NAME, token, { ...getAuthCookieOptions(req), maxAge: remainingMs });
+
+        console.log(`[switch-account] ${req.user.username} -> ${target.username}`);
+
+        res.json({
+            token,
+            user: { id: target.id, username: target.username, email: target.email, role: target.role }
+        });
+    } catch (error) {
+        console.error("Error switching account:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };

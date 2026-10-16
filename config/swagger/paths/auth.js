@@ -54,6 +54,65 @@ module.exports = {
       },
     },
   },
+  "/api/auth/linked-accounts": {
+    get: {
+      tags: ["Auth"],
+      summary: "List other active student accounts registered with the caller's email (account switcher)",
+      description:
+        "Matched on users.email (case-insensitive, trimmed). Returns an empty list for admin/teacher callers and for students with a single account. Accounts with isValid = 0 are excluded.",
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: jsonRes("Linked accounts", {
+          accounts: [
+            { username: "RTS-JAD-2602", courseTitle: "Full Stack SDET", batch_no: 19, courseId: "sdet192026" },
+          ],
+        }),
+        401: errRes("Invalid token", "Invalid token"),
+        403: errRes("Missing token", "Unauthorized"),
+        500: SERVER_ERROR,
+      },
+    },
+  },
+  "/api/auth/switch-account": {
+    post: {
+      tags: ["Auth"],
+      summary: "Switch the session to another account registered with the same email (no password)",
+      description:
+        "The target must be in the caller's linked-accounts list (same email, role student, isValid = 1, not the caller). Returns a new JWT for the target account that keeps the CURRENT token's expiry (a switch never extends the session) and replaces the httpOnly auth cookie.",
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["username"],
+              properties: {
+                username: {
+                  type: "string",
+                  description: "StudentId of the account to switch to",
+                  example: "RTS-JAD-2602",
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: jsonRes("Switched; same shape as login", {
+          token:
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjE1LCJ1c2VybmFtZSI6IlJUUy1KQUQtMjYwMiIsInJvbGUiOiJzdHVkZW50In0.dummy-signature",
+          user: { id: 215, username: "RTS-JAD-2602", email: "jane.doe@example.com", role: "student" },
+        }),
+        401: errRes("Invalid token", "Invalid token"),
+        403: errRes(
+          "Not a linked account (different email, unknown, self, disabled, non-student, or caller is not a student). The message is identical in every case so account names cannot be probed.",
+          "Cannot switch to this account"
+        ),
+        500: SERVER_ERROR,
+      },
+    },
+  },
   "/api/auth/request-password-reset": {
     post: {
       tags: ["Auth"],

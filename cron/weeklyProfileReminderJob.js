@@ -4,6 +4,7 @@ const User = require("../models/User");
 const { sendEmailWithAttachment } = require("../utils/emailHelper");
 const { enqueueEmail } = require("../utils/emailQueue");
 const { getProfileGapAnalysis, buildPersonalizedReminderBody } = require("../utils/profileGapHelper");
+const { normalizeEmail } = require("../utils/linkedAccountsHelper");
 const { notify, notifyRoles } = require("../utils/notificationHelper");
 const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 
@@ -11,6 +12,36 @@ const TIMEZONE = "Asia/Dhaka";
 const PROFILE_SCORE_THRESHOLD = 70;
 
 let isJobRunning = false;
+
+// A person can have multiple Student rows sharing one email — registering for a
+// second course creates a new User/Student pair rather than reusing the first
+// (see studentSignup) — and they can switch between those accounts, so the
+// reminder is decided per email address, not per account:
+//   - if ANY linked account already meets the threshold, the person has a
+//     complete profile somewhere: send nothing;
+//   - otherwise email once, about their earliest-registered enrolled account.
+// Pure (no DB) so it can be tested directly.
+function selectReminderTargets(enrolledStudents, threshold) {
+  const groups = new Map();
+  for (const student of enrolledStudents) {
+    const key = normalizeEmail(student.email);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(student);
+  }
+
+  const targets = [];
+  let skippedGroups = 0;
+  for (const rows of groups.values()) {
+    if (rows.some((row) => row.profile_score >= threshold)) {
+      skippedGroups++;
+      continue;
+    }
+    const earliest = rows.reduce((a, b) => (b.createdAt < a.createdAt ? b : a));
+    targets.push({ student: earliest, accountCount: rows.length });
+  }
+
+  return { targets, skippedGroups, uniqueEmails: groups.size };
+}
 
 const escapeCSV = (value) => {
   const str = String(value ?? "");
@@ -144,42 +175,33 @@ async function runWeeklyProfileReminderJob() {
       include: [{ model: User, attributes: ["email", "isValid"], where: { isValid: true } }],
     });
 
-    // A person can have multiple Student rows sharing one email — registering for a
-    // second course creates a new User/Student pair rather than reusing the first
-    // (see studentSignup). Collapse to one canonical row per email — their earliest
-    // registered *enrolled* course — so this job never double-emails the same person,
-    // and eligibility is judged from that one course rather than whichever course row
-    // happens to dip below threshold. TASK-50.
-    const canonicalByEmail = new Map();
-    for (const student of enrolledStudents) {
-      const existing = canonicalByEmail.get(student.email);
-      if (!existing || student.createdAt < existing.createdAt) {
-        canonicalByEmail.set(student.email, student);
-      }
-    }
-
-    const eligibleStudents = [...canonicalByEmail.values()].filter(
-      (student) => student.profile_score < PROFILE_SCORE_THRESHOLD
+    // One reminder per email address (TASK-50, refined by TASK-63) — see
+    // selectReminderTargets for the rule.
+    const { targets, skippedGroups, uniqueEmails } = selectReminderTargets(
+      enrolledStudents,
+      PROFILE_SCORE_THRESHOLD
     );
 
     console.log(
-      `[weeklyProfileReminderJob] Found ${eligibleStudents.length} eligible student(s) ` +
-      `(${enrolledStudents.length} enrolled row(s) across ${canonicalByEmail.size} unique email(s)).`
+      `[weeklyProfileReminderJob] Found ${targets.length} eligible student(s) ` +
+      `(${enrolledStudents.length} enrolled row(s) across ${uniqueEmails} unique email(s); ` +
+      `${skippedGroups} email(s) skipped because a linked account already meets the threshold).`
     );
 
     // Computed once per student and reused for both the email body and the
     // admin CSV — avoids running the gap analysis twice per student.
-    const studentsWithGaps = eligibleStudents.map((student) => ({
+    const studentsWithGaps = targets.map(({ student, accountCount }) => ({
       student,
+      accountCount,
       gap: getProfileGapAnalysis(student.toJSON(), PROFILE_SCORE_THRESHOLD),
     }));
 
     // Enqueued (not awaited one-by-one) so sends happen concurrently via emailQueue's
     // worker pool (retries included); one student's failure never blocks the rest.
     const sendResults = await Promise.all(
-      studentsWithGaps.map(async ({ student, gap }) => {
+      studentsWithGaps.map(async ({ student, gap, accountCount }) => {
         const subject = `Complete Your Road to SDET Profile — Current Score: ${student.profile_score}%`;
-        const body = buildPersonalizedReminderBody(student, gap);
+        const body = buildPersonalizedReminderBody(student, gap, accountCount);
         const sent = await enqueueEmail({
           to: student.email,
           subject,
@@ -242,4 +264,4 @@ async function runWeeklyProfileReminderJob() {
   }
 }
 
-module.exports = { runWeeklyProfileReminderJob };
+module.exports = { runWeeklyProfileReminderJob, selectReminderTargets };

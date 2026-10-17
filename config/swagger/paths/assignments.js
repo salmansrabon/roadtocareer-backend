@@ -385,6 +385,7 @@ module.exports = {
               StudentId: "RTS-JAD-2601",
               student_name: "Jane Doe",
               email: "jane.doe@example.com",
+              photo: "https://sdetapi.roadtocareer.net/api/images/avatar/1774190486599-jane.jpg",
               previous_batch: "Batch-06",
               submittedCount: 6,
               totalScore: 104,

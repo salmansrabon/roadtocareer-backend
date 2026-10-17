@@ -116,6 +116,7 @@ const getAssignmentSummaryByCourse = async (req, res) => {
         StudentId: sid,
         student_name: student.student_name,
         email: student.User?.email || "",
+        photo: student.photo || "",
         previous_batch: student.previous_batch_no || "",
         submittedCount: studentAnswers.length,
         totalScore: assignmentScore,

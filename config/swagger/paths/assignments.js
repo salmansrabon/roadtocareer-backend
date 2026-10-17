@@ -253,6 +253,47 @@ module.exports = {
       },
     },
   },
+  "/api/assignment/answer/{answerId}/evaluate": {
+    post: {
+      tags: ["Assignments"],
+      summary: "AI draft review of a submission (Admin) — suggestion only, nothing is saved",
+      description:
+        "Fetches the submitted public GitHub repository, asks the configured OpenAI model (`OPENAI_EVALUATION_MODEL`, default `gpt-6-luna`) to review it against the assignment, and returns a suggested score and comment. Does **not** write the score/comments or notify the student; the admin saves through `PUT /api/assignment/review/assignment/{assignmentId}`. Only GitHub repository URLs are supported. Rate limited to 10 requests/minute per IP.",
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: "answerId", in: "path", required: true, schema: { type: "integer", example: 903 } },
+      ],
+      responses: {
+        200: jsonRes("Suggested review", {
+          score: 17,
+          totalScore: 20,
+          whatIsGood: ["You structured the tests with a clear Page Object Model (pages/LoginPage.java)."],
+          whyDeducted: ["Thread.sleep is used instead of explicit waits in LoginTest.java."],
+          comment:
+            "What is good:\n- You structured the tests with a clear Page Object Model (pages/LoginPage.java).\n\nWhy mark is deducted:\n- Thread.sleep is used instead of explicit waits in LoginTest.java.",
+          meta: {
+            model: "gpt-6-luna",
+            repo: "janedoe/pom-login-assignment",
+            branch: "main",
+            filesReviewed: 9,
+            totalFiles: 21,
+          },
+        }),
+        400: errRes("Invalid answer id", "A valid answerId is required."),
+        401: UNAUTHORIZED,
+        403: FORBIDDEN_ADMIN,
+        404: errRes("No such submission", "Assignment answer not found."),
+        422: errRes(
+          "Submission is not an evaluable public GitHub repo",
+          "Only GitHub repository URLs can be evaluated right now."
+        ),
+        429: errRes("Rate limited (this endpoint or GitHub)", "Too many requests. Please try again shortly."),
+        502: errRes("OpenAI or GitHub failure", "AI evaluation failed. Please try again or review manually."),
+        503: errRes("OPENAI_API_KEY not set", "AI evaluation is not configured on the server."),
+        500: errRes("Unexpected server error", "Internal server error."),
+      },
+    },
+  },
   "/api/assignment/summary": {
     get: {
       tags: ["Assignments"],

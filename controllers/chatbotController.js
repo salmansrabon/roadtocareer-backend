@@ -2,6 +2,7 @@
 const Course = require("../models/Course");
 const Package = require("../models/Package");
 const Module = require("../models/Module");
+const { stripHtml } = require("../utils/stripHtml");
 
 const generateGPTResponse = async (question, databaseContext) => {
   try {
@@ -38,18 +39,6 @@ ${databaseContext}`,
     return null;
   }
 };
-
-const stripHtml = (str) =>
-  str
-    ? str
-        .replace(/<[^>]*>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/\s+/g, " ")
-        .trim()
-    : "";
 
 const parseClassDays = (val) => {
   if (Array.isArray(val)) return val;

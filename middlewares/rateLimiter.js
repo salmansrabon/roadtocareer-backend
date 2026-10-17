@@ -2,12 +2,13 @@
 // public (no auth) but call billable/abusable services (OpenAI, outbound
 // email). No new dependency — the app runs as a single process (same
 // assumption notificationHub.js already makes), so an in-memory Map is fine.
-const buckets = new Map();
-
 /**
  * @param {{ windowMs: number, max: number, message?: string }} opts
  */
 exports.rateLimit = ({ windowMs, max, message }) => {
+  // One bucket map per limiter, so two routes limited by the same IP never
+  // count against each other's window/max.
+  const buckets = new Map();
   return (req, res, next) => {
     const key = req.ip;
     const now = Date.now();

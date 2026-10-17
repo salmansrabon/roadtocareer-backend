@@ -258,13 +258,14 @@ module.exports = {
       tags: ["Assignments"],
       summary: "AI draft review of a submission (Admin) — suggestion only, nothing is saved",
       description:
-        "Fetches the submitted public GitHub repository, asks the configured OpenAI model (`OPENAI_EVALUATION_MODEL`, default `gpt-6-luna`) to review it against the assignment, and returns a suggested score and comment. Does **not** write the score/comments or notify the student; the admin saves through `PUT /api/assignment/review/assignment/{assignmentId}`. Only GitHub repository URLs are supported. Rate limited to 10 requests/minute per IP.",
+        "Reads every supported link in the submission (a public GitHub repository, a Google Doc, or a Google Sheet shared as \"Anyone with the link can view\"; a Doc is read in full and a Sheet tab by tab), asks the configured OpenAI model (`OPENAI_EVALUATION_MODEL`, default `gpt-6-luna`) to review it against the assignment, and returns a suggested score and comment. The model first classifies the assignment from its question (`assignmentType`, e.g. UI automation, Bug report, Test cases, Performance testing) and reviews it against that type's criteria. Does **not** write the score/comments or notify the student; the admin saves through `PUT /api/assignment/review/assignment/{assignmentId}`. Images and diagrams inside Docs/Sheets are not visible to the model. Rate limited to 10 requests/minute per IP.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "answerId", in: "path", required: true, schema: { type: "integer", example: 903 } },
       ],
       responses: {
         200: jsonRes("Suggested review", {
+          assignmentType: "UI automation",
           score: 17,
           totalScore: 20,
           whatIsGood: ["You structured the tests with a clear Page Object Model (pages/LoginPage.java)."],
@@ -273,10 +274,11 @@ module.exports = {
             "What is good:\n- You structured the tests with a clear Page Object Model (pages/LoginPage.java).\n\nWhy mark is deducted:\n- Thread.sleep is used instead of explicit waits in LoginTest.java.",
           meta: {
             model: "gpt-6-luna",
-            repo: "janedoe/pom-login-assignment",
-            branch: "main",
-            filesReviewed: 9,
-            totalFiles: 21,
+            sources: [
+              "GitHub repository janedoe/pom-login-assignment (9 of 21 files read)",
+              "Google Doc (12,305 characters read)",
+              "Google Sheet, tabs read: Test Cases, Bug Report",
+            ],
           },
         }),
         400: errRes("Invalid answer id", "A valid answerId is required."),
@@ -284,8 +286,8 @@ module.exports = {
         403: FORBIDDEN_ADMIN,
         404: errRes("No such submission", "Assignment answer not found."),
         422: errRes(
-          "Submission is not an evaluable public GitHub repo",
-          "Only GitHub repository URLs can be evaluated right now."
+          "No readable link: private/missing repo or doc, or an unsupported link type",
+          "This Google Doc is not publicly readable. The student must share it as \"Anyone with the link can view\"."
         ),
         429: errRes("Rate limited (this endpoint or GitHub)", "Too many requests. Please try again shortly."),
         502: errRes("OpenAI or GitHub failure", "AI evaluation failed. Please try again or review manually."),

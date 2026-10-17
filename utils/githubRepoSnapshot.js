@@ -6,6 +6,8 @@
 // GITHUB_TOKEN (optional) raises that to 5000/hour. File bodies come from
 // raw.githubusercontent.com, which does not count against the API limit.
 
+const { SubmissionFetchError } = require("./submissionFetchError");
+
 const MAX_FILES = 12;
 const MAX_FILE_CHARS = 6000;
 const MAX_TOTAL_CHARS = 40000;
@@ -18,31 +20,25 @@ const SKIP_FILE = /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer
 const TEXT_EXT = /\.(js|jsx|ts|tsx|java|py|cs|go|kt|rb|php|feature|robot|gradle|xml|yml|yaml|md|json|properties|sql|sh|ini|toml)$/i;
 const CONFIG_FILE = /(^|\/)(package\.json|pom\.xml|build\.gradle|requirements\.txt|pyproject\.toml|testng\.xml|pytest\.ini|Jenkinsfile|playwright\.config\.\w+|cypress\.config\.\w+|wdio\.conf\.\w+|jest\.config\.\w+|\.github\/workflows\/[^/]+)$/i;
 
-class GithubSnapshotError extends Error {
-  constructor(httpStatus, message) {
-    super(message);
-    this.httpStatus = httpStatus;
-  }
-}
 
 /**
  * @param {string} rawUrl
  * @returns {{owner: string, repo: string, ref: string|null, subPath: string}}
- * @throws {GithubSnapshotError} 422 when the URL is not a github.com repository link.
+ * @throws {SubmissionFetchError} 422 when the URL is not a github.com repository link.
  */
 function parseGithubRepoUrl(rawUrl) {
   let url;
   try {
     url = new URL(String(rawUrl).trim());
   } catch {
-    throw new GithubSnapshotError(422, "The submission is not a valid URL.");
+    throw new SubmissionFetchError(422, "The submission is not a valid URL.");
   }
   if (!["github.com", "www.github.com"].includes(url.hostname.toLowerCase())) {
-    throw new GithubSnapshotError(422, "Only GitHub repository URLs can be evaluated right now.");
+    throw new SubmissionFetchError(422, "Only GitHub repository URLs can be evaluated right now.");
   }
   const parts = url.pathname.split("/").filter(Boolean);
   if (parts.length < 2) {
-    throw new GithubSnapshotError(422, "The URL must point to a GitHub repository, not a profile page.");
+    throw new SubmissionFetchError(422, "The URL must point to a GitHub repository, not a profile page.");
   }
   const owner = parts[0];
   const repo = parts[1].replace(/\.git$/i, "");
@@ -67,15 +63,15 @@ async function githubApi(path) {
   try {
     res = await fetch(`https://api.github.com${path}`, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   } catch {
-    throw new GithubSnapshotError(502, "Could not reach GitHub. Please try again.");
+    throw new SubmissionFetchError(502, "Could not reach GitHub. Please try again.");
   }
   if (res.status === 404) {
-    throw new GithubSnapshotError(422, "Repository (or branch) not found, or it is private. The repository must be public.");
+    throw new SubmissionFetchError(422, "Repository (or branch) not found, or it is private. The repository must be public.");
   }
   if (res.status === 403 || res.status === 429) {
-    throw new GithubSnapshotError(429, "GitHub rate limit reached. Try again later or set GITHUB_TOKEN on the server.");
+    throw new SubmissionFetchError(429, "GitHub rate limit reached. Try again later or set GITHUB_TOKEN on the server.");
   }
-  if (!res.ok) throw new GithubSnapshotError(502, `GitHub returned an unexpected error (${res.status}).`);
+  if (!res.ok) throw new SubmissionFetchError(502, `GitHub returned an unexpected error (${res.status}).`);
   return res.json();
 }
 
@@ -113,7 +109,7 @@ async function fetchRawFile(owner, repo, ref, path) {
 /**
  * @param {string} rawUrl a github.com repository URL
  * @returns {Promise<{repoName: string, ref: string, text: string, filesIncluded: number, totalFiles: number}>}
- * @throws {GithubSnapshotError}
+ * @throws {SubmissionFetchError}
  */
 async function buildRepoSnapshot(rawUrl) {
   const { owner, repo, ref: urlRef, subPath } = parseGithubRepoUrl(rawUrl);
@@ -122,20 +118,30 @@ async function buildRepoSnapshot(rawUrl) {
   const ref = urlRef || meta.default_branch;
   const treeRes = await githubApi(`/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
   const tree = treeRes.tree || [];
-  if (!tree.length) throw new GithubSnapshotError(422, "The repository is empty.");
+  if (!tree.length) throw new SubmissionFetchError(422, "The repository is empty.");
 
   const picked = selectFiles(tree, subPath);
   const bodies = await Promise.allSettled(picked.map((f) => fetchRawFile(owner, repo, ref, f.path)));
 
-  const treeLines = tree
-    .filter((e) => e.type === "blob" && !SKIP_PATH.test(e.path) && !SKIP_FILE.test(e.path))
-    .map((e) => e.path)
-    .slice(0, MAX_TREE_LINES);
+  // Lock files stay in the listing (names only, bodies are never fetched) so the
+  // reviewer can see they exist. Build/dependency folders are summarised instead
+  // of listed: committing them is itself something a reviewer should notice.
+  const blobs = tree.filter((e) => e.type === "blob");
+  const treeLines = blobs.filter((e) => !SKIP_PATH.test(e.path)).map((e) => e.path).slice(0, MAX_TREE_LINES);
+  const omittedFolders = {};
+  blobs.forEach((e) => {
+    const m = e.path.match(SKIP_PATH);
+    if (m) omittedFolders[m[2]] = (omittedFolders[m[2]] || 0) + 1;
+  });
 
   let text = `REPOSITORY: ${owner}/${repo} (branch: ${ref})\n`;
   if (meta.description) text += `REPO DESCRIPTION: ${meta.description}\n`;
   if (meta.pushed_at) text += `LAST PUSH: ${meta.pushed_at}\n`;
-  text += `\nFILE TREE (${treeLines.length}${tree.length > treeLines.length ? "+" : ""} files):\n${treeLines.join("\n")}\n`;
+  text += `\nFILE TREE (${treeLines.length}${blobs.length > treeLines.length ? "+" : ""} files):\n${treeLines.join("\n")}\n`;
+  const omitted = Object.entries(omittedFolders);
+  if (omitted.length) {
+    text += `\nFOLDERS COMMITTED TO THE REPO BUT OMITTED FROM THIS SNAPSHOT: ${omitted.map(([dir, n]) => `${dir}/ (${n} files)`).join(", ")}\n`;
+  }
 
   let filesIncluded = 0;
   picked.forEach((file, i) => {
@@ -149,4 +155,4 @@ async function buildRepoSnapshot(rawUrl) {
   return { repoName: `${owner}/${repo}`, ref, text, filesIncluded, totalFiles: tree.filter((e) => e.type === "blob").length };
 }
 
-module.exports = { buildRepoSnapshot, parseGithubRepoUrl, GithubSnapshotError };
+module.exports = { buildRepoSnapshot, parseGithubRepoUrl };

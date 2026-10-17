@@ -416,6 +416,11 @@ module.exports = {
     post: {
       tags: ["Exams"],
       summary: "Trigger AI evaluation for a single exam question",
+      description:
+        "Suggestion only, nothing is saved. Uses the OpenAI evaluation model (`OPENAI_EVALUATION_MODEL`, default `gpt-6-luna`). " +
+        "The question's answer hint is the marking guide: a clear hint is marked strictly (`basis: hint`), a vague hint is " +
+        "anchored on and completed with the model's own knowledge (`basis: hint and AI knowledge`), and a missing hint is " +
+        "marked against the model's own correct answer (`basis: AI knowledge`). A blank student answer always scores 0.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "examId", in: "path", required: true, schema: { type: "integer", example: 12 } },
@@ -442,18 +447,16 @@ module.exports = {
             feedback:
               "Nice one — you nailed the polling vs condition distinction. Mention why mixing both is risky next time.",
             maxScore: 5,
-            aiResponse: '{"score": 4.5, "feedback": "Nice one — you nailed the ..."}',
+            basis: "hint",
+            model: "gpt-6-luna",
           },
         }),
         400: errRes("questionNumber missing", "Question number is required"),
         401: UNAUTHORIZED,
         403: FORBIDDEN_ADMIN,
         404: errRes("Student, submission or question missing", "Question not found in submission"),
-        500: jsonRes("OpenAI call failed", {
-          message: "AI evaluation failed",
-          error: "Request failed with status code 429",
-          details: "Rate limit reached for gpt-4o",
-        }),
+        502: errRes("OpenAI call failed", "AI evaluation failed. Please try again or score manually."),
+        503: errRes("OPENAI_API_KEY not set", "AI evaluation is not configured on the server."),
       },
     },
   },
@@ -461,7 +464,10 @@ module.exports = {
     post: {
       tags: ["Exams"],
       summary: "Trigger automated AI evaluation for every question in a submission",
-      description: "Per-question failures are collected in `data.errors` rather than failing the request.",
+      description:
+        "Marks every question in ONE batched model call (max 40 questions), using the same hint-first policy as the " +
+        "single-question endpoint; each result reports its `basis`. A blank answer always scores 0. " +
+        "Questions the model returned no result for are listed in `data.errors` rather than failing the request.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "examId", in: "path", required: true, schema: { type: "integer", example: 12 } },
@@ -472,21 +478,21 @@ module.exports = {
           message: "AI evaluation completed",
           data: {
             evaluatedQuestions: [
-              { questionNumber: 1, score: 4.5, feedback: "Clear and correct — good example too." },
-              { questionNumber: 2, score: 3, feedback: "Right idea, but you skipped the readability angle." },
+              { questionNumber: 1, maxScore: 5, score: 4.5, basis: "hint", feedback: "Clear and correct — good example too." },
+              { questionNumber: 2, maxScore: 5, score: 3, basis: "hint and AI knowledge", feedback: "Right idea, but you skipped the readability angle." },
             ],
             totalQuestions: 10,
             successfullyEvaluated: 9,
-            errors: [{ questionNumber: 7, error: "Request failed with status code 429" }],
+            errors: [{ questionNumber: 7, error: "The AI returned no result for this question." }],
+            model: "gpt-6-luna",
           },
         }),
+        400: errRes("More than 40 questions", "This exam has more than 40 questions; evaluate them one at a time."),
         401: UNAUTHORIZED,
         403: FORBIDDEN_ADMIN,
         404: errRes("Student or submission missing", "No submission found for this exam"),
-        500: jsonRes("OpenAI call failed", {
-          message: "AI evaluation failed",
-          error: "Request failed with status code 429",
-        }),
+        502: errRes("OpenAI call failed", "AI evaluation failed. Please try again or score manually."),
+        503: errRes("OPENAI_API_KEY not set", "AI evaluation is not configured on the server."),
       },
     },
   },

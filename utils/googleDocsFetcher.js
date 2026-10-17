@@ -3,8 +3,13 @@
 // Images, drawings and formatting are not part of the text export.
 const { SubmissionFetchError } = require("./submissionFetchError");
 
-const MAX_CHARS = 24000;
+const MAX_CHARS = 24000; // total budget for the tabs of one Sheet
 const MAX_TABS = 6;
+// A Doc is cut at 15 pages (~3,000 characters of plain text per page).
+const MAX_DOC_PAGES = 15;
+const CHARS_PER_PAGE = 3000;
+const MAX_DOC_CHARS = MAX_DOC_PAGES * CHARS_PER_PAGE;
+const pagesOf = (chars) => Math.max(1, Math.round(chars / CHARS_PER_PAGE));
 const REQUEST_TIMEOUT_MS = 20000;
 
 async function fetchExport(exportUrl, kind) {
@@ -31,23 +36,32 @@ async function fetchExport(exportUrl, kind) {
   return res.text();
 }
 
-function capText(text) {
-  const clean = text.replace(/^﻿/, "").trim();
-  return clean.length > MAX_CHARS ? `${clean.slice(0, MAX_CHARS)}\n[...truncated, document continues]` : clean;
-}
-
 /**
- * Reads the whole document. The link's `?tab=` is deliberately ignored: adding it
- * to the export URL would return that one tab only, whereas the plain export
- * contains every tab of a multi-tab doc.
+ * Reads a document, up to MAX_DOC_PAGES pages. The link's `?tab=` is deliberately
+ * ignored: adding it to the export URL would return that one tab only, whereas the
+ * plain export contains every tab of a multi-tab doc.
+ * A longer document is cut at a line break and marked, so the reviewer knows the
+ * rest was not read and the admin sees it in the source label.
  * @param {string} id the document id
  * @returns {Promise<{text: string, label: string}>}
  */
 async function readGoogleDoc(id) {
-  const text = await fetchExport(`https://docs.google.com/document/d/${id}/export?format=txt`, "Doc");
-  const body = capText(text);
-  if (!body) throw new SubmissionFetchError(422, "The Google Doc is empty.");
-  return { text: body, label: `Google Doc (${body.length.toLocaleString("en-US")} characters read)` };
+  const raw = await fetchExport(`https://docs.google.com/document/d/${id}/export?format=txt`, "Doc");
+  const clean = raw.replace(/^﻿/, "").trim();
+  if (!clean) throw new SubmissionFetchError(422, "The Google Doc is empty.");
+
+  const totalPages = pagesOf(clean.length);
+  if (clean.length <= MAX_DOC_CHARS) {
+    return { text: clean, label: `Google Doc (about ${totalPages} ${totalPages === 1 ? "page" : "pages"}, fully read)` };
+  }
+
+  const head = clean.slice(0, MAX_DOC_CHARS);
+  const lastBreak = head.lastIndexOf("\n");
+  const body = lastBreak > MAX_DOC_CHARS * 0.9 ? head.slice(0, lastBreak) : head;
+  return {
+    text: `${body}\n[...DOCUMENT TRUNCATED: only the first ${MAX_DOC_PAGES} pages of about ${totalPages} were read; the rest was NOT read]`,
+    label: `Google Doc (first ${MAX_DOC_PAGES} of about ${totalPages} pages read; the rest was not read)`,
+  };
 }
 
 // Names and gids of a sheet's tabs, from the public "htmlview" page. Best effort:

@@ -138,12 +138,24 @@ const submitAssignmentAnswer = async (req, res) => {
 };
 
 
+// Admins and teachers can read any student's answers; a student only their own.
+// Identity comes from the JWT (req.user.username IS the StudentId), never from the
+// request. Without these checks any logged-in student could list every classmate's
+// submission links, scores and comments.
+const isStaff = (user) => user?.role === "admin" || user?.role === "teacher";
+const canViewStudent = (req, studentId) => isStaff(req.user) || studentId === req.user?.username;
+
 const getAnswersByAssignmentId = async (req, res) => {
   try {
     const assignmentId = req.params.assignmentId;
 
+    // Staff get the whole review queue; a student gets only their own submission
+    // (the student assignments page picks its own row out of this list).
+    const where = { AssignmentId: assignmentId };
+    if (!isStaff(req.user)) where.StudentId = req.user?.username;
+
     const answers = await AssignmentAnswer.findAll({
-      where: { AssignmentId: assignmentId },
+      where,
       include: [
         {
           model: AssignmentQuestion,
@@ -170,6 +182,10 @@ const getAnswersByStudentId = async (req, res) => {
   try {
     const studentId = req.params.studentId;
     const { courseId, batch_no } = req.query;
+
+    if (!canViewStudent(req, studentId)) {
+      return res.status(403).json({ message: "You may only view your own submissions." });
+    }
 
     const assignmentWhere = {};
     if (courseId) {
@@ -209,6 +225,9 @@ const getAssignmentAnswerByStudentAndAssignmentId = async (req, res) => {
 
   if (!studentId || !assignmentId) {
     return res.status(400).json({ message: "studentId and assignmentId are required." });
+  }
+  if (!canViewStudent(req, studentId)) {
+    return res.status(403).json({ message: "You may only view your own submissions." });
   }
 
   try {

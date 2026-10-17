@@ -96,4 +96,4 @@ async function buildSubmissionSnapshot(rawSubmission) {
   return { text, sources };
 }
 
-module.exports = { buildSubmissionSnapshot };
+module.exports = { buildSubmissionSnapshot, extractUrls };

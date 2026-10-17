@@ -167,6 +167,7 @@ module.exports = {
         200: jsonRes("Submission details", { answer: EX_ASSIGNMENT_ANSWER }),
         400: errRes("Missing query params", "studentId and assignmentId are required."),
         401: UNAUTHORIZED,
+        403: errRes("A student asked for another student's answer", "You may only view your own submissions."),
         404: errRes("No submission for that pair", "Assignment answer not found."),
         500: errRes("Unexpected server error", "Internal server error."),
       },
@@ -175,7 +176,9 @@ module.exports = {
   "/api/assignment/answer/assignment/{assignmentId}": {
     get: {
       tags: ["Assignments"],
-      summary: "Get every submission for one assignment",
+      summary: "Get submissions for one assignment (Admin/teacher: all; student: only their own)",
+      description:
+        "Admins and teachers receive the whole review queue. A student receives only their own submission, so a student can never list classmates' links, scores or comments.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "assignmentId", in: "path", required: true, schema: { type: "integer", example: 41 } },
@@ -193,7 +196,7 @@ module.exports = {
   "/api/assignment/answer/student/{studentId}": {
     get: {
       tags: ["Assignments"],
-      summary: "Get every submission by one student",
+      summary: "Get every submission by one student (Admin/teacher: any student; student: only themselves)",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
@@ -208,6 +211,7 @@ module.exports = {
           ],
         }),
         401: UNAUTHORIZED,
+        403: errRes("A student asked for another student's submissions", "You may only view your own submissions."),
         404: errRes("No submissions", "No answers found for Student ID: RTS-JAD-2601"),
         500: SERVER_ERROR,
       },
@@ -296,10 +300,70 @@ module.exports = {
       },
     },
   },
+  "/api/assignment/answer/{answerId}/evaluate/chat": {
+    post: {
+      tags: ["Assignments"],
+      summary: "Chat with the AI reviewer about one submission (Admin) — nothing is saved",
+      description:
+        "Stateless: the client sends the conversation (last 12 messages kept) with every turn and the server stores none of it. Links pasted into the latest message (GitHub, Google Doc, Google Sheet) are read and added as extra sources for the rest of the chat (max 3, cached in memory for 15 minutes). `review` is non-null only when the admin asked for a re-review; it is the same suggestion shape as `/evaluate`, including the late penalty, and is never saved. The admin applies it to the form and saves through `PUT /api/assignment/review/assignment/{assignmentId}`. Rate limited to 30 requests/minute per IP.",
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        { name: "answerId", in: "path", required: true, schema: { type: "integer", example: 903 } },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["messages"],
+              properties: {
+                messages: {
+                  type: "array",
+                  description: "Conversation so far; the last item must be a `user` message.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      role: { type: "string", enum: ["user", "assistant"] },
+                      content: { type: "string", example: "Re-review with this doc: https://docs.google.com/document/d/abc/edit" },
+                    },
+                  },
+                },
+                current: {
+                  type: "object",
+                  description: "Score and comment currently in the review form.",
+                  properties: { score: { type: "integer", example: 17 }, comment: { type: "string" } },
+                },
+                lastEvaluation: {
+                  type: "object",
+                  description: "The most recent AI suggestion in this session, if any.",
+                  properties: { score: { type: "integer", example: 17 }, comment: { type: "string" } },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: jsonRes("AI reply, plus a proposed review when a re-review was requested", {
+          reply: "I read the Google Doc you added. Question 5 is now answered, so I removed that deduction.",
+          review: null,
+          meta: { model: "gpt-6-luna", sources: ["Google Doc (12,305 characters read)"], linkNotes: [] },
+        }),
+        400: errRes("Bad answer id or no user message", "Send a message to chat about this submission."),
+        401: UNAUTHORIZED,
+        403: FORBIDDEN_ADMIN,
+        404: errRes("No such submission", "Assignment answer not found."),
+        429: errRes("Rate limited", "Too many requests. Please try again shortly."),
+        502: errRes("OpenAI failure", "The AI reviewer could not answer. Please try again."),
+        503: errRes("OPENAI_API_KEY not set", "AI evaluation is not configured on the server."),
+      },
+    },
+  },
   "/api/assignment/summary": {
     get: {
       tags: ["Assignments"],
-      summary: "Aggregate assignment completion and grading statistics for a course",
+      summary: "Aggregate assignment completion and grading statistics for a course (Admin)",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "courseId", in: "query", required: true, schema: { type: "integer", example: 7 } },
@@ -333,6 +397,7 @@ module.exports = {
         }),
         400: errRes("courseId not supplied", "courseId is required"),
         401: UNAUTHORIZED,
+        403: FORBIDDEN_ADMIN,
         404: errRes("No students on the course", "No students found for this course"),
         500: errRes("Unexpected server error", "Server error while fetching assignment summary"),
       },

@@ -244,6 +244,10 @@ const getQuizState = (startedAt, entries, totalTimeMin, now = Date.now()) => {
     return { status: remainingMs > 0 ? "in_progress" : "expired", remainingMs, endsAt };
 };
 
+// Shared with the admin assignment summary so both read an attempt's state the same way.
+exports.parseQuizAnswers = parseQuizAnswers;
+exports.getQuizState = getQuizState;
+
 // quiz_started_at is a DATETIME (no fractional seconds): stamp whole seconds so
 // the value returned right after stamping equals what every later read returns.
 const wholeSecond = (ms) => new Date(Math.floor(ms / 1000) * 1000);

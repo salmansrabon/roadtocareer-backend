@@ -363,13 +363,19 @@ module.exports = {
   "/api/assignment/summary": {
     get: {
       tags: ["Assignments"],
-      summary: "Aggregate assignment completion and grading statistics for a course (Admin)",
+      summary: "Aggregate assignment, quiz and written exam scores for a course (Admin)",
+      description:
+        "`totalScore` / `totalAllocatedScore` stay assignment-only. `quiz` (null when never attempted) and `exams` " +
+        "(this course's written exams the student submitted) are added, and `grandTotal` / `grandMax` combine everything " +
+        "that has a score. A quiz still in progress (`status: in_progress`) or an exam not yet evaluated (`evaluated: false`) " +
+        "has `score: null` and is left out of `grandTotal` / `grandMax`. A student who migrated out of the course has no " +
+        "quiz or exams here. Sorted by `grandTotal` DESC.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "courseId", in: "query", required: true, schema: { type: "integer", example: 7 } },
       ],
       responses: {
-        200: jsonRes("Assignment metrics, sorted by total score DESC", {
+        200: jsonRes("Assignment, quiz and exam scores, sorted by combined total DESC", {
           courseId: "7",
           studentCount: 1,
           totalAssignments: 10,
@@ -382,6 +388,13 @@ module.exports = {
               previous_batch: "Batch-06",
               submittedCount: 6,
               totalScore: 104,
+              quiz: { score: 26, maxScore: 30, status: "submitted" },
+              exams: [
+                { examId: 2, title: "Written Exam for Batch 17", evaluated: true, score: 92, maxScore: 100 },
+                { examId: 3, title: "Final Written Exam", evaluated: false, score: null, maxScore: 20 },
+              ],
+              grandTotal: 222,
+              grandMax: 330,
               answers: [
                 {
                   AssignmentId: 41,

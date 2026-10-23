@@ -1,5 +1,14 @@
+const { Op } = require("sequelize");
 const Package = require("../models/Package");
 const Course = require("../models/Course");
+const Student = require("../models/Student");
+
+const sameName = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+
+// Payments and dues look a package up by (courseId, packageName), so a package
+// that students already use must keep its name and its row.
+const countStudentsOnPackage = (pkg) =>
+    Student.count({ where: { CourseId: pkg.courseId, package: pkg.packageName } });
 
 // Helper function to process installment input (handles both JSON string and comma-separated string)
 const processInstallmentInput = (installmentInput) => {
@@ -35,13 +44,20 @@ const processInstallmentInput = (installmentInput) => {
 
 exports.createPackage = async (req, res) => {
     try {
-        const { courseId, packageName, discountedFee, regularFee, installment } = req.body;
+        const { courseId, packageName, discountedFee, regularFee, installment, is_self_learning } = req.body;
 
-        // ✅ Check if a package already exists for this course
-        const existingPackage = await Package.findOne({ where: { courseId } });
+        if (!packageName || !String(packageName).trim()) {
+            return res.status(400).json({ message: "Package name is required." });
+        }
 
-        if (existingPackage) {
-            return res.status(400).json({ message: "A package is already created for this course." });
+        // ✅ A course can have many packages, but their names must be unique
+        const siblings = await Package.findAll({ where: { courseId } });
+        if (siblings.some((p) => sameName(p.packageName, packageName))) {
+            return res.status(400).json({ message: "This course already has a package with this name." });
+        }
+        // ✅ Only one package per course can be the Self-Learning package
+        if (is_self_learning && siblings.some((p) => p.is_self_learning)) {
+            return res.status(400).json({ message: "This course already has a Self-Learning package." });
         }
 
         // Process installment input (convert comma-separated string to JSON object)
@@ -50,10 +66,11 @@ exports.createPackage = async (req, res) => {
         // ✅ Create new package
         const newPackage = await Package.create({
             courseId,
-            packageName,
+            packageName: String(packageName).trim(),
             discountedFee,
             regularFee,
-            installment: processedInstallment
+            installment: processedInstallment,
+            is_self_learning: Boolean(is_self_learning)
         });
 
         res.status(201).json({ message: "Package created successfully", package: newPackage });
@@ -91,6 +108,39 @@ exports.updatePackage = async (req, res) => {
             return res.status(404).json({ success: false, message: "Package not found" });
         }
 
+        if (updateData.is_self_learning !== undefined) {
+            updateData.is_self_learning = Boolean(updateData.is_self_learning);
+            if (updateData.is_self_learning && !existing.is_self_learning) {
+                const other = await Package.findOne({
+                    where: { courseId: existing.courseId, is_self_learning: true, id: { [Op.ne]: existing.id } }
+                });
+                if (other) {
+                    return res.status(400).json({ success: false, message: "This course already has a Self-Learning package." });
+                }
+            }
+        }
+
+        const newName = updateData.packageName === undefined ? undefined : String(updateData.packageName).trim();
+        if (newName !== undefined && newName !== existing.packageName) {
+            if (!newName) {
+                return res.status(400).json({ success: false, message: "Package name is required." });
+            }
+            const siblings = await Package.findAll({
+                where: { courseId: existing.courseId, id: { [Op.ne]: existing.id } }
+            });
+            if (siblings.some((p) => sameName(p.packageName, newName))) {
+                return res.status(400).json({ success: false, message: "This course already has a package with this name." });
+            }
+            const studentCount = await countStudentsOnPackage(existing);
+            if (studentCount > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: `${studentCount} student(s) are on this package. Renaming it would break their payment records.`
+                });
+            }
+            updateData.packageName = newName;
+        }
+
         // Process installment if it's being updated
         if (updateData.installment) {
             updateData.installment = processInstallmentInput(updateData.installment);
@@ -116,6 +166,14 @@ exports.deletePackage = async (req, res) => {
             return res.status(404).json({ success: false, message: "Package not found" });
         }
 
+        const studentCount = await countStudentsOnPackage(existing);
+        if (studentCount > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `${studentCount} student(s) are on this package, so it cannot be deleted.`
+            });
+        }
+
         await existing.destroy();
         res.status(200).json({ success: true, message: "Package deleted successfully" });
     } catch (err) {
@@ -128,11 +186,13 @@ exports.deletePackage = async (req, res) => {
 exports.getPackageByCourse = async (req, res) => {
     const { courseId } = req.params;
     try {
-        const pkg = await Package.findOne({ where: { courseId } });
-        if (!pkg) {
+        const packages = await Package.findAll({ where: { courseId }, order: [["id", "ASC"]] });
+        if (!packages.length) {
             return res.status(404).json({ success: false, message: "No package found for this course." });
         }
-        res.status(200).json({ success: true, package: pkg });
+        // `package` stays for older callers: the first normal package, else the first one.
+        const primary = packages.find((p) => !p.is_self_learning) || packages[0];
+        res.status(200).json({ success: true, package: primary, packages });
     } catch (err) {
         console.error("Error fetching package by course:", err);
         res.status(500).json({ success: false, message: "Internal server error" });

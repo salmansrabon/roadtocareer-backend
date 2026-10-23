@@ -34,11 +34,17 @@ module.exports = {
     get: {
       tags: ["Courses"],
       summary: "Get course details by ID (includes packages)",
+      description:
+        "`Packages` holds the normal packages (oldest first). The package the admin marked as Self-Learning (`is_self_learning`) is returned separately as `selfLearningPackage` (or `null`). The same split applies to `GET /api/courses/list`.",
       parameters: [{ name: "courseId", in: "path", required: true, schema: { type: "integer", example: 7 } }],
       responses: {
         200: jsonRes("Course details", {
           success: true,
-          course: { ...EX_COURSE, Packages: [EX_PACKAGE] },
+          course: {
+            ...EX_COURSE,
+            Packages: [EX_PACKAGE],
+            selfLearningPackage: { ...EX_PACKAGE, id: 4, packageName: "Recorded", discountedFee: 3000, regularFee: 4000, installment: { total: 1, amount: [3000] }, is_self_learning: true },
+          },
         }),
         404: errRes("Course not found", "Course not found"),
         500: SERVER_ERROR,

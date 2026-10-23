@@ -287,6 +287,7 @@ exports.getPaymentHistory = async (req, res) => {
             isEnrolled,
             courseId,
             packageId,
+            installment: packageDetails.installment, // the student's OWN package plan
             courseFee,
             totalPaid,
             remainingBalance, // ✅ Added Remaining Balance

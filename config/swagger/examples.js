@@ -147,6 +147,7 @@ const EX_PACKAGE = {
   discountedFee: 25000,
   regularFee: 30000,
   installment: { "1": 10000, "2": 10000, "3": 5000 },
+  is_self_learning: false,
   createdAt: "2026-06-20T09:05:00.000Z",
   updatedAt: "2026-06-20T09:05:00.000Z",
 };

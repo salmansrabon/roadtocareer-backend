@@ -1,6 +1,19 @@
 const Course = require("../models/Course");
 const Package = require("../models/Package");
 
+// Public shape: `Packages` holds the normal packages (creation order), so the many
+// Packages[0] readers keep working. The package the admin flagged as Self-Learning
+// rides along as `selfLearningPackage`.
+const splitSelfLearningPackage = (course) => {
+    const json = course.toJSON();
+    const all = json.Packages || [];
+    return {
+        ...json,
+        Packages: all.filter((p) => !p.is_self_learning),
+        selfLearningPackage: all.find((p) => p.is_self_learning) || null
+    };
+};
+
 exports.createCourse = async (req, res) => {
     try {
         const {
@@ -107,16 +120,17 @@ exports.getCourseDetails = async (req, res) => {
             include: [
                 {
                     model: Package,
-                    attributes: ["packageName", "discountedFee", "regularFee", "installment"],
+                    attributes: ["packageName", "discountedFee", "regularFee", "installment", "is_self_learning"],
                 }
-            ]
+            ],
+            order: [[Package, "id", "ASC"]]
         });
 
         if (!course) {
             return res.status(404).json({ message: "Course not found" });
         }
 
-        res.status(200).json({ success: true, course });
+        res.status(200).json({ success: true, course: splitSelfLearningPackage(course) });
     } catch (error) {
         console.error("Error fetching course details:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -147,14 +161,15 @@ exports.getCoursesList = async (req, res) => {
             include: [
                 {
                     model: Package,
-                    attributes: ["id", "packageName", "discountedFee", "regularFee", "installment"]
+                    attributes: ["id", "packageName", "discountedFee", "regularFee", "installment", "is_self_learning"]
                 }
-            ]
+            ],
+            order: [[Package, "id", "ASC"]]
         });
 
         res.status(200).json({
             count: courses.length,
-            courses
+            courses: courses.map(splitSelfLearningPackage)
         });
     } catch (error) {
         console.error("Error fetching courses:", error);

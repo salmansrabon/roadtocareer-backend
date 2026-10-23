@@ -26,6 +26,7 @@ const {
 const { calculateProfileScore } = require("../utils/profileScoreHelper");
 const { getCurrentOrLastEmployer } = require("../utils/employmentExperienceHelper");
 const { getStarredAssignmentStatus, STARRED_PASS_PERCENT } = require("../utils/starredAssignmentHelper");
+const { buildSelfLearningPaymentEmail } = require("../utils/selfLearningEmail");
 const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
 
 // ✅ Function to Generate Unique Student ID
@@ -136,6 +137,8 @@ exports.studentSignup = async (req, res) => {
         message: "Invalid package. Package does not exist for this course.",
       });
     }
+
+    const isSelfLearning = Boolean(packageData.is_self_learning);
 
     // ✅ Generate Unique Student ID
     const studentId = await generateStudentId(student_name);
@@ -363,17 +366,28 @@ exports.studentSignup = async (req, res) => {
                         </div>
                             `;
 
-      await sendEmail(
-        email,
-        `Road to SDET- Batch ${course.batch_no} Welcome to our Course!`,
-        studentEmailBody
-      );
-      await sendEmail(
-        email,
-        `Road to SDET- Batch ${course.batch_no} Course payment procedure and class schedule`,
-        paymentEmailBody,
-        "text/html"
-      );
+      if (isSelfLearning) {
+        // The live-batch bodies above are built but unused here. That is harmless
+        // and avoids re-indenting ~130 lines.
+        const { subject, html } = buildSelfLearningPaymentEmail({
+          studentName: student_name,
+          course,
+          packageData,
+        });
+        await sendEmail(email, subject, html, "text/html");
+      } else {
+        await sendEmail(
+          email,
+          `Road to SDET- Batch ${course.batch_no} Welcome to our Course!`,
+          studentEmailBody
+        );
+        await sendEmail(
+          email,
+          `Road to SDET- Batch ${course.batch_no} Course payment procedure and class schedule`,
+          paymentEmailBody,
+          "text/html"
+        );
+      }
     } catch (emailError) {
       console.error("❌ Error sending email to student:", emailError);
       return res.status(500).json({
@@ -397,6 +411,7 @@ exports.studentSignup = async (req, res) => {
                     Student Name: ${student_name}
                     Course Title: ${course.course_title}
                     Batch No: ${course.batch_no}
+                    Package: ${package_name}
                     University: ${university}
                     Profession: ${profession}
                     Passing Year: ${passingYear}
@@ -409,7 +424,7 @@ exports.studentSignup = async (req, res) => {
 
         await sendEmail(
           adminEmails.join(","),
-          "New Student Enrollment",
+          isSelfLearning ? "New Student Enrollment (Self-Learning)" : "New Student Enrollment",
           adminEmailBody
         );
         console.log("📧 Notification email sent to admin.");
@@ -423,7 +438,7 @@ exports.studentSignup = async (req, res) => {
           recipients: adminUsers.map((admin) => admin.username),
           type: NOTIFICATION_TYPES.STUDENT_ENROLLED,
           title: "New student enrollment",
-          body: `${student_name} enrolled in ${course.course_title} (Batch ${course.batch_no}).`,
+          body: `${student_name} enrolled in ${course.course_title} (Batch ${course.batch_no})${isSelfLearning ? " as Self-Learning" : ""}.`,
           link: `/admin/students/${studentId}`,
           actorUsername: null,
           actorName: student_name,
@@ -460,15 +475,25 @@ exports.studentSignup = async (req, res) => {
 };
 
 // Course completion = average of attendance % and graded-assignment %, each capped
-// at 100. Shared by the single-student progress endpoint and the admin list so the
-// two always agree. Returns the two parts unrounded; only the overall is rounded.
-const calcCourseCompletion = (attendanceCount, totalClass, assignmentCount, totalAssignments) => {
+// at 100. Self-Learning students have no live classes, so for them it is the
+// assignment % only. Shared by the single-student progress endpoint and the admin
+// list so the two always agree. Returns the two parts unrounded; only the overall is rounded.
+const calcCourseCompletion = (
+  attendanceCount,
+  totalClass,
+  assignmentCount,
+  totalAssignments,
+  { isSelfLearning = false } = {}
+) => {
   const attendancePercentage = Math.min((attendanceCount / totalClass) * 100, 100);
   const assignmentPercentage = Math.min((assignmentCount / totalAssignments) * 100, 100);
+  const overall = isSelfLearning
+    ? assignmentPercentage
+    : (attendancePercentage + assignmentPercentage) / 2;
   return {
     attendancePercentage,
     assignmentPercentage,
-    courseCompletionPercentage: Math.round((attendancePercentage + assignmentPercentage) / 2),
+    courseCompletionPercentage: Math.round(overall),
   };
 };
 
@@ -478,10 +503,10 @@ const calcCourseCompletion = (attendanceCount, totalClass, assignmentCount, tota
 const addCourseCompletion = async (rows) => {
   const courseIds = [...new Set(rows.map((r) => r.Course?.courseId).filter(Boolean))];
   if (!rows.length || !courseIds.length) {
-    return rows.map((r) => ({ ...r, courseCompletion: null }));
+    return rows.map((r) => ({ ...r, courseCompletion: null, isSelfLearning: false }));
   }
 
-  const [totals, graded] = await Promise.all([
+  const [totals, graded, flagged] = await Promise.all([
     AssignmentQuestion.findAll({
       attributes: ["courseId", [Sequelize.fn("COUNT", Sequelize.col("id")), "total"]],
       where: { courseId: { [Op.in]: courseIds } },
@@ -503,7 +528,14 @@ const addCourseCompletion = async (rows) => {
       group: ["AssignmentAnswer.StudentId", "Assignment.courseId"],
       raw: true,
     }),
+    // Packages that are a course's Self-Learning (recorded) package.
+    Package.findAll({
+      attributes: ["courseId", "packageName"],
+      where: { courseId: { [Op.in]: courseIds }, is_self_learning: true },
+      raw: true,
+    }),
   ]);
+  const selfLearningKeys = new Set(flagged.map((p) => `${p.courseId}|${p.packageName}`));
 
   const totalByCourse = Object.fromEntries(totals.map((t) => [t.courseId, Number(t.total)]));
   const gradedByStudentCourse = {};
@@ -513,15 +545,17 @@ const addCourseCompletion = async (rows) => {
 
   return rows.map((r) => {
     const cid = r.Course?.courseId;
-    if (!cid) return { ...r, courseCompletion: null };
+    if (!cid) return { ...r, courseCompletion: null, isSelfLearning: false };
     const attendanceCount = getBatchEntries(r.Attendance?.attendanceList, r.Attendance?.courseId, cid).length;
+    const isSelfLearning = selfLearningKeys.has(`${cid}|${r.package}`);
     const { courseCompletionPercentage } = calcCourseCompletion(
       attendanceCount,
       r.Course?.total_class || 30,
       gradedByStudentCourse[`${r.StudentId}|${cid}`] || 0,
-      totalByCourse[cid] || 1 // no assignments: avoid division by zero, as getCourseProgress does
+      totalByCourse[cid] || 1, // no assignments: avoid division by zero, as getCourseProgress does
+      { isSelfLearning }
     );
-    return { ...r, courseCompletion: courseCompletionPercentage };
+    return { ...r, courseCompletion: courseCompletionPercentage, isSelfLearning };
   });
 };
 
@@ -2008,16 +2042,35 @@ exports.getCourseProgress = async (req, res) => {
       if (count > 0) totalAssignments = count;
     }
 
+    // Self-Learning students have no live classes: completion is assignments only,
+    // and the certificate depends on the mandatory (starred) assignments.
+    const studentPackage = student
+      ? await Package.findOne({
+          where: { courseId, packageName: student.package },
+          attributes: ["is_self_learning"],
+        })
+      : null;
+    const isSelfLearning = Boolean(studentPackage?.is_self_learning);
+
     // 5-6. Percentages, and overall completion = the average of the two
+    // (assignments only for Self-Learning students)
     const { attendancePercentage, assignmentPercentage, courseCompletionPercentage } =
-      calcCourseCompletion(attendanceCount, totalClass, assignmentCount, totalAssignments);
+      calcCourseCompletion(attendanceCount, totalClass, assignmentCount, totalAssignments, { isSelfLearning });
 
     // 7. Starred assignments gate the certificate on top of the completion percentage
     const starredStatus = await getStarredAssignmentStatus(studentId, courseId);
 
+    // Self-Learning certificate rule: every mandatory (starred) assignment passed. A course
+    // with no mandatory assignment falls back to the usual 80% assignment threshold.
+    const selfLearningCertificateMet = isSelfLearning
+      ? (starredStatus.starredTotal > 0 ? starredStatus.starredGateMet : assignmentPercentage >= 80)
+      : null;
+
     // 8. Return the results
     res.json({
       ...starredStatus,
+      isSelfLearning,
+      selfLearningCertificateMet,
       starredPassPercent: STARRED_PASS_PERCENT,
       attendanceCount,
       assignmentCount,

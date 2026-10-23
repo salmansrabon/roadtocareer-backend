@@ -2,6 +2,7 @@ const Student = require("../models/Student");
 const Course = require("../models/Course");
 const User = require("../models/User");
 const Attendance = require("../models/Attendance");
+const Package = require("../models/Package");
 const Event = require("../models/Event");
 const moment = require("moment-timezone");
 const { sendEmail, sendEmailWithAttachment } = require("../utils/emailHelper");
@@ -143,6 +144,13 @@ async function runAttendanceReminderJob() {
           continue;
         }
 
+        // Students on the recorded (Self-Learning) package do not attend live classes: never mail them "you missed class".
+        const recordedPackages = await Package.findAll({
+          where: { courseId: course.courseId, is_self_learning: true },
+          attributes: ["packageName"],
+        });
+        const recordedPackageNames = new Set(recordedPackages.map((p) => p.packageName));
+
         const students = await Student.findAll({
           where: { CourseId: course.courseId, isEnrolled: true },
           include: [
@@ -156,6 +164,7 @@ async function runAttendanceReminderJob() {
         for (const student of students) {
           if (!student.User || student.User.isValid !== 1) continue;
           if (student.profession === "Job Holder") continue;
+          if (recordedPackageNames.has(student.package)) continue;
 
           // attendanceList is keyed by courseId — only this course's entries are relevant here
           const attendanceList = getBatchEntries(

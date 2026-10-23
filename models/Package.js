@@ -32,6 +32,14 @@ const Package = sequelize.define("Package", {
     installment: {
         type: DataTypes.JSON,
         allowNull: false
+    },
+    // Marks the recorded-course ("Self-Learning") package of a course. The package NAME is
+    // free text; this flag is what makes the public card show a Self-Learning button.
+    // At most one package per course has it (enforced in packageController).
+    is_self_learning: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
     }
 }, {
     tableName: "packages",

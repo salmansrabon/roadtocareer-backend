@@ -17,6 +17,8 @@ module.exports = {
     post: {
       tags: ["Students"],
       summary: "Public student onboarding signup (creates the users row and emails credentials)",
+      description:
+        "`package_name` must be a package of the course. If it is the course's Self-Learning package (`is_self_learning`), the student gets one payment-instruction email (single payment, no live-class schedule) instead of the two live-batch emails.",
       requestBody: {
         required: true,
         content: { "application/json": { schema: { $ref: "#/components/schemas/StudentSignupRequest" } } },
@@ -307,7 +309,7 @@ module.exports = {
       tags: ["Students"],
       summary: "Calculate course completion percentage and milestone progress",
       description:
-        "Also returns the starred-assignment certificate gate. `starredGateMet` is false while any starred assignment in the student's course is not submitted, awaiting review, or reviewed below `starredPassPercent` of its total score. Each `pendingStarred` item has `reason` of `not_submitted`, `awaiting_review` or `failed`.",
+        "Also returns the starred-assignment certificate gate. `starredGateMet` is false while any starred assignment in the student's course is not submitted, awaiting review, or reviewed below `starredPassPercent` of its total score. Each `pendingStarred` item has `reason` of `not_submitted`, `awaiting_review` or `failed`. For a Self-Learning student (`isSelfLearning: true`) there is no attendance: `courseCompletionPercentage` equals `assignmentPercentage`, and `selfLearningCertificateMet` is true when every starred (mandatory) assignment is passed (or, if the course has none, when `assignmentPercentage` is at least 80). `selfLearningCertificateMet` is `null` for other students.",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
@@ -321,6 +323,8 @@ module.exports = {
           attendancePercentage: 44,
           assignmentPercentage: 60,
           courseCompletionPercentage: 52,
+          isSelfLearning: false,
+          selfLearningCertificateMet: null,
           starredTotal: 2,
           starredPassPercent: 50,
           starredGateMet: false,

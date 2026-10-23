@@ -121,6 +121,7 @@ module.exports = {
           isEnrolled: true,
           courseId: 7,
           packageId: 3,
+          installment: { total: 3, amount: [10000, 10000, 5000] },
           courseFee: 25000,
           totalPaid: 20000,
           remainingBalance: 5000,

@@ -56,7 +56,12 @@ EVIDENCE RULES
 - Google Docs and Sheets are read as plain text. Images, screenshots, diagrams, drawings, charts and formatting are NOT visible. If the assignment expects a screenshot, diagram or similar and the text mentions or labels it, do not deduct for its absence; say that the image could not be viewed. The source header lists which Sheet tabs were read; do not deduct for content that could be in a tab that was not read.
 - If a source ends with "DOCUMENT TRUNCATED", only the first part of that document was read. Judge only what was read: do not deduct for anything that could be in the unread remainder (for example later questions, a conclusion, or later sections), and say plainly in the feedback that only the first pages could be reviewed.
 - Lines such as "SOURCE NOT READABLE" or "LINK NOT READ" mean that content could not be fetched. Do not assume that work is missing and do not give marks for it: say that it could not be verified.
-- If a required deliverable needs something you cannot verify (an external video, Postman, deployed or other link mentioned only in a README), do not assume it is missing and do not give marks for it: say that it could not be verified.
+- If a required deliverable needs something you cannot verify (a Postman, deployed or other external link mentioned only in a README), do not assume it is missing and do not give marks for it: say that it could not be verified. Recorded videos are the exception: see VIDEO RECORDINGS below.
+
+VIDEO RECORDINGS
+- You cannot open or watch external videos. If the assignment requires a recorded video, look in the README or document for a video link (for example YouTube, Google Drive, Loom, Vimeo or a GitHub video/asset link) next to or labelled for that deliverable.
+- If such a link is there, assume the recording is attached and shows the work as required. Give FULL marks for that video requirement, do not deduct for it, and do not mention it in "whyDeducted". You may say in "whatIsGood" that the video link is provided.
+- If the assignment requires a video and no video link is mentioned anywhere in the submission, deduct for the missing video as usual.
 - If the submission does not contain the kind of work the assignment asks for, score it low and say why.
 
 SCORING
@@ -112,14 +117,16 @@ const loadAnswerForReview = (answerId) =>
       {
         model: AssignmentQuestion,
         as: "Assignment",
-        attributes: ["Assignment_Title", "Description", "TotalScore", "SubmissionDate"],
+        attributes: ["Assignment_Title", "Description", "TotalScore", "SubmissionDate", "courseId"],
       },
     ],
   });
 
 // Turns the model's raw review into the final suggestion: clamps the score,
 // cleans the bullets, applies the late penalty and builds the comment text.
-const finalizeReview = (answer, raw) => {
+// `skipLatePenalty`: Self-Learning students (TASK-67) work on old courses whose
+// deadlines have long passed, so the late rule does not apply to them.
+const finalizeReview = (answer, raw, { skipLatePenalty = false } = {}) => {
   const totalScore = Number(answer.Assignment.TotalScore);
   const reviewedScore = Math.min(Math.max(Math.round(Number(raw.score) || 0), 0), totalScore);
   const whatIsGood = cleanBullets(raw.whatIsGood);
@@ -131,7 +138,7 @@ const finalizeReview = (answer, raw) => {
   // stored deadline is the Bangladesh clock time labelled UTC (see
   // frontend/utils/dateFormatter.js), so the real cutoff is 6 hours earlier.
   const deadline = answer.Assignment.SubmissionDate;
-  const isLate = !!deadline && new Date(answer.createdAt).getTime() > new Date(deadline).getTime() - BD_UTC_OFFSET_MS;
+  const isLate = !skipLatePenalty && !!deadline && new Date(answer.createdAt).getTime() > new Date(deadline).getTime() - BD_UTC_OFFSET_MS;
   const latePenalty = isLate ? Math.min(LATE_PENALTY, reviewedScore) : 0;
   const score = reviewedScore - latePenalty;
   if (isLate) {

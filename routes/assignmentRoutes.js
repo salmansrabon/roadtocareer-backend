@@ -13,12 +13,14 @@ const { rateLimit } = require("../middlewares/rateLimiter");
 const evaluationLimiter = rateLimit({ windowMs: 60 * 1000, max: 10 });
 // Chat turns are frequent but each is one billable call; separate bucket from Evaluate.
 const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30 });
+// Self-Learning submissions start a billable AI review each time (TASK-67).
+const submitLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: "Too many submissions. Please wait a minute and try again." });
 
 router.post('/question', authenticateUser, requireAdmin, createAssignmentQuestion);
 router.get('/question/list', authenticateUser, getAllAssignmentQuestions);
 router.put('/question/:id', authenticateUser, requireAdmin, updateAssignmentQuestion);
 router.delete('/question/:id', authenticateUser, requireAdmin, deleteAssignmentQuestion);
-router.post('/answer',authenticateUser, submitAssignmentAnswer);
+router.post('/answer', authenticateUser, submitLimiter, submitAssignmentAnswer);
 router.get('/answer/assignment/:assignmentId', authenticateUser, getAnswersByAssignmentId);
 router.get('/answer/student/:studentId',authenticateUser, getAnswersByStudentId);
 router.get('/answer', authenticateUser, getAssignmentAnswerByStudentAndAssignmentId);

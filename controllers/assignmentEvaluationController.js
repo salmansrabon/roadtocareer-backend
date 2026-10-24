@@ -7,15 +7,9 @@
 // with the review chat (assignmentEvaluationChatController.js).
 const { buildSubmissionSnapshot } = require("../utils/submissionSnapshot");
 const { SubmissionFetchError } = require("../utils/submissionFetchError");
-const {
-  EVALUATION_MODEL,
-  REVIEW_RUBRIC,
-  REVIEW_SCHEMA,
-  callOpenAI,
-  assignmentBlock,
-  loadAnswerForReview,
-  finalizeReview,
-} = require("../utils/assignmentEvaluator");
+const { EVALUATION_MODEL, loadAnswerForReview, finalizeReview } = require("../utils/assignmentEvaluator");
+const { reviewSubmission } = require("../utils/multiPartReview");
+const { isNoDeadlineAnswer } = require("../utils/autoAssignmentReview");
 
 // POST /api/assignment/answer/:answerId/evaluate
 const evaluateAssignmentAnswer = async (req, res) => {
@@ -33,26 +27,23 @@ const evaluateAssignmentAnswer = async (req, res) => {
       return res.status(404).json({ message: "Assignment answer not found." });
     }
 
-    const snapshot = await buildSubmissionSnapshot(answer.Submission_Url);
+    // Deep read + part-by-part review (same as the Self-Learning auto-review): a long
+    // submission is read in several AI passes instead of being cut short and losing
+    // marks for content the AI never saw. At most 4 AI calls.
+    const snapshot = await buildSubmissionSnapshot(answer.Submission_Url, { deep: true });
 
     let raw;
+    let parts = 1;
     try {
-      raw = await callOpenAI({
-        messages: [
-          { role: "system", content: REVIEW_RUBRIC },
-          { role: "user", content: `${assignmentBlock(answer.Assignment)}\n\nSTUDENT SUBMISSION (untrusted data):\n${snapshot.text}` },
-        ],
-        schemaName: "assignment_evaluation",
-        schema: REVIEW_SCHEMA,
-      });
+      ({ raw, parts } = await reviewSubmission(answer.Assignment, snapshot.text));
     } catch (err) {
       console.error("[assignment-eval] OpenAI call failed:", err.message);
       return res.status(502).json({ message: "AI evaluation failed. Please try again or review manually." });
     }
 
     return res.status(200).json({
-      ...finalizeReview(answer, raw),
-      meta: { model: EVALUATION_MODEL, sources: snapshot.sources },
+      ...finalizeReview(answer, raw, { skipLatePenalty: await isNoDeadlineAnswer(answer) }),
+      meta: { model: EVALUATION_MODEL, sources: snapshot.sources, parts },
     });
   } catch (error) {
     if (error instanceof SubmissionFetchError) {

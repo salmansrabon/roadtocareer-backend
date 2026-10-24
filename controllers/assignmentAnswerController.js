@@ -6,6 +6,12 @@ const { enqueueEmail } = require("../utils/emailQueue");
 const { notify, wasRecentlyNotified } = require("../utils/notificationHelper");
 const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
 const { Op } = require("sequelize");
+const { buildSubmissionSnapshot } = require("../utils/submissionSnapshot");
+const { SubmissionFetchError } = require("../utils/submissionFetchError");
+const { isSelfLearningStudent, runAutoReview } = require("../utils/autoAssignmentReview");
+
+const PUBLIC_LINK_HELP =
+  "Please submit a public link: a public GitHub repository, or a Google Doc or Google Sheet shared as \"Anyone with the link can view\".";
 
 const submitAssignmentAnswer = async (req, res) => {
   const { AssignmentId, Submission_Url, Comments } = req.body;
@@ -29,6 +35,30 @@ const submitAssignmentAnswer = async (req, res) => {
   try {
     let answer;
 
+    // TASK-67: a Self-Learning student's own submission is reviewed by AI right away.
+    // The link is read BEFORE saving, so an unreadable link is rejected with a clear
+    // message and nothing is stored. Staff submitting on a student's behalf keep the
+    // normal (manual) flow. Courses without a Self-Learning package never auto-review.
+    let autoReview = false;
+    if (!isStaff) {
+      const assignmentCourse = await AssignmentQuestion.findByPk(AssignmentId, { attributes: ["courseId"] });
+      autoReview = await isSelfLearningStudent(StudentId, assignmentCourse?.courseId);
+    }
+    let snapshot = null;
+    if (autoReview) {
+      try {
+        // deep: read much more of the work; the review reads it in parts if needed.
+        snapshot = await buildSubmissionSnapshot(Submission_Url, { deep: true });
+      } catch (err) {
+        if (!(err instanceof SubmissionFetchError)) throw err;
+        return res.status(422).json({
+          message: `The AI reviewer could not read your link. ${PUBLIC_LINK_HELP}`,
+          detail: err.message,
+          code: "LINK_NOT_READABLE",
+        });
+      }
+    }
+
     const existing = await AssignmentAnswer.findOne({
       where: {
         AssignmentId: Number(AssignmentId),
@@ -36,11 +66,23 @@ const submitAssignmentAnswer = async (req, res) => {
       }
     });
 
+    const reviewFields = autoReview ? { ai_review_status: "pending" } : {};
     if (existing) {
-      await existing.update({ Submission_Url, Comments });
+      await existing.update({ Submission_Url, Comments, ...reviewFields });
       answer = existing;
     } else {
-      answer = await AssignmentAnswer.create({ AssignmentId, StudentId, Submission_Url, Comments });
+      answer = await AssignmentAnswer.create({ AssignmentId, StudentId, Submission_Url, Comments, ...reviewFields });
+    }
+
+    if (autoReview) {
+      // Background: the student gets an answer now and polls for the result. No admin
+      // email or notification, since nobody reviews Self-Learning work by hand.
+      runAutoReview(answer.id, snapshot, new Date(answer.updatedAt).getTime());
+      return res.status(existing ? 200 : 201).json({
+        message: "Answer submitted. The AI is reviewing it now.",
+        answer,
+        autoReview: true,
+      });
     }
 
     // 🔔 Notify Admins

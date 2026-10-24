@@ -2070,6 +2070,8 @@ exports.getCourseProgress = async (req, res) => {
     res.json({
       ...starredStatus,
       isSelfLearning,
+      // TASK-67: assignments of this course have no due date for the student.
+      selfLearningCourseId: isSelfLearning ? courseId : null,
       selfLearningCertificateMet,
       starredPassPercent: STARRED_PASS_PERCENT,
       attendanceCount,

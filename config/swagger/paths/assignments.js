@@ -115,7 +115,8 @@ module.exports = {
       tags: ["Assignments"],
       summary: "Submit (or resubmit) a student assignment solution",
       description:
-        "Returns **201** for a first submission and **200** when an existing answer is updated. Students may only submit their own work; admins/teachers may pass `StudentId` to submit on a student's behalf.",
+        "Returns **201** for a first submission and **200** when an existing answer is updated. Students may only submit their own work; admins/teachers may pass `StudentId` to submit on a student's behalf.\n\n" +
+        "**Self-Learning students (TASK-67):** the link is read first; an unreadable or private link is rejected with **422** and nothing is saved. Otherwise the answer is saved with `ai_review_status: \"pending\"`, the response carries `autoReview: true`, and an AI review runs in the background. It then sets `Score`, appends an `\"AI review:\"` comment, and sets `reviewed_by: \"ai\"` and `ai_review_status: \"done\"` (or `\"failed\"`). No late penalty, no admin notification. Rate limited to 10 submissions per minute.",
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
@@ -152,6 +153,13 @@ module.exports = {
         400: errRes("Missing identifiers", "AssignmentId and StudentId are required."),
         401: UNAUTHORIZED,
         403: errRes("Submitting for another student", "You may only submit your own assignment."),
+        422: jsonRes("Self-Learning student: the AI reviewer cannot read the link", {
+          message:
+            "The AI reviewer could not read your link. Please submit a public link: a public GitHub repository, or a Google Doc or Google Sheet shared as \"Anyone with the link can view\".",
+          detail: "None of the submitted links can be read automatically.",
+          code: "LINK_NOT_READABLE",
+        }),
+        429: errRes("Rate limited", "Too many submissions. Please wait a minute and try again."),
         500: errRes("Unexpected server error", "Error submitting assignment answer"),
       },
     },

@@ -39,6 +39,7 @@ const updateAssignmentScore = async (req, res) => {
     if (Score !== undefined) answer.Score = Score;
     if (Comments !== undefined) answer.Comments = Comments;
     answer.reviewDate = new Date(); // Set review date when assignment is reviewed
+    answer.reviewed_by = "admin"; // TASK-67: replaces an earlier AI review's mark
 
     await answer.save();
 

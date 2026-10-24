@@ -3,12 +3,14 @@
 // Images, drawings and formatting are not part of the text export.
 const { SubmissionFetchError } = require("./submissionFetchError");
 
-const MAX_CHARS = 24000; // total budget for the tabs of one Sheet
-const MAX_TABS = 6;
-// A Doc is cut at 15 pages (~3,000 characters of plain text per page).
-const MAX_DOC_PAGES = 15;
+// A Doc is cut at maxDocPages (~3,000 characters of plain text per page); a Sheet
+// shares sheetChars across up to maxTabs tabs. "deep" is used by the Self-Learning
+// auto-review (TASK-67), which reads a large snapshot in several AI passes.
+const LIMITS = {
+  normal: { sheetChars: 24000, maxTabs: 6, maxDocPages: 15 },
+  deep: { sheetChars: 72000, maxTabs: 12, maxDocPages: 45 },
+};
 const CHARS_PER_PAGE = 3000;
-const MAX_DOC_CHARS = MAX_DOC_PAGES * CHARS_PER_PAGE;
 const pagesOf = (chars) => Math.max(1, Math.round(chars / CHARS_PER_PAGE));
 const REQUEST_TIMEOUT_MS = 20000;
 
@@ -37,15 +39,18 @@ async function fetchExport(exportUrl, kind) {
 }
 
 /**
- * Reads a document, up to MAX_DOC_PAGES pages. The link's `?tab=` is deliberately
+ * Reads a document, up to LIMITS.*.maxDocPages pages. The link's `?tab=` is deliberately
  * ignored: adding it to the export URL would return that one tab only, whereas the
  * plain export contains every tab of a multi-tab doc.
  * A longer document is cut at a line break and marked, so the reviewer knows the
  * rest was not read and the admin sees it in the source label.
  * @param {string} id the document id
+ * @param {{deep?: boolean}} [options]
  * @returns {Promise<{text: string, label: string}>}
  */
-async function readGoogleDoc(id) {
+async function readGoogleDoc(id, { deep = false } = {}) {
+  const MAX_DOC_PAGES = (deep ? LIMITS.deep : LIMITS.normal).maxDocPages;
+  const MAX_DOC_CHARS = MAX_DOC_PAGES * CHARS_PER_PAGE;
   const raw = await fetchExport(`https://docs.google.com/document/d/${id}/export?format=txt`, "Doc");
   const clean = raw.replace(/^﻿/, "").trim();
   if (!clean) throw new SubmissionFetchError(422, "The Google Doc is empty.");
@@ -97,9 +102,11 @@ const compactCsv = (csv) => csv.split(/\r?\n/).filter((line) => line.replace(/[,
  * back to the linked tab alone if the tab list cannot be read.
  * @param {URL} url a docs.google.com/spreadsheets/d/<id> link
  * @param {string} id the spreadsheet id
+ * @param {{deep?: boolean}} [options]
  * @returns {Promise<{text: string, label: string}>}
  */
-async function readGoogleSheet(url, id) {
+async function readGoogleSheet(url, id, { deep = false } = {}) {
+  const { sheetChars: MAX_CHARS, maxTabs: MAX_TABS } = deep ? LIMITS.deep : LIMITS.normal;
   const linkedGid = (url.searchParams.get("gid") || url.hash.match(/gid=(\d+)/)?.[1] || "").replace(/\D/g, "");
   const listed = await listSheetTabs(id);
   const linkedFirst = [...listed].sort((a, b) => (b.gid === linkedGid) - (a.gid === linkedGid));

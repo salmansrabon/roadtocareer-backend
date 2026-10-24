@@ -17,6 +17,7 @@ const {
   loadAnswerForReview,
   finalizeReview,
 } = require("../utils/assignmentEvaluator");
+const { isNoDeadlineAnswer } = require("../utils/autoAssignmentReview");
 
 const MAX_HISTORY = 12;
 const MAX_MESSAGE_CHARS = 4000;
@@ -179,7 +180,9 @@ const chatAboutAssignmentAnswer = async (req, res) => {
     const meta = { model: EVALUATION_MODEL, sources, linkNotes };
     return res.status(200).json({
       reply: cleanText(raw.reply, 8000) || "(no reply)",
-      review: raw.review ? { ...finalizeReview(answer, raw.review), meta } : null,
+      review: raw.review
+        ? { ...finalizeReview(answer, raw.review, { skipLatePenalty: await isNoDeadlineAnswer(answer) }), meta }
+        : null,
       meta,
     });
   } catch (error) {

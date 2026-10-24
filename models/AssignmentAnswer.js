@@ -50,6 +50,17 @@ const AssignmentAnswer = sequelize.define('AssignmentAnswer', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    // TASK-67: who wrote the current Score/Comments ("admin" or "ai"); null = not reviewed.
+    reviewed_by: {
+        type: DataTypes.STRING(10),
+        allowNull: true
+    },
+    // TASK-67: automatic AI review state for Self-Learning students
+    // ("pending", "done", "failed"); null = never auto-reviewed.
+    ai_review_status: {
+        type: DataTypes.STRING(10),
+        allowNull: true
+    },
 
 }, {
     tableName: 'assignment_answers',

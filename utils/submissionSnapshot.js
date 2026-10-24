@@ -34,21 +34,23 @@ function classify(rawUrl) {
   return { type: "unsupported", rawUrl, host };
 }
 
-async function readSource(link) {
+async function readSource(link, options) {
   if (link.type === "github") {
-    const s = await buildRepoSnapshot(link.rawUrl);
+    const s = await buildRepoSnapshot(link.rawUrl, options);
     return { text: s.text, label: `GitHub repository ${s.repoName} (${s.filesIncluded} of ${s.totalFiles} files read)` };
   }
-  if (link.type === "google-doc") return readGoogleDoc(link.id);
-  return readGoogleSheet(link.url, link.id);
+  if (link.type === "google-doc") return readGoogleDoc(link.id, options);
+  return readGoogleSheet(link.url, link.id, options);
 }
 
 /**
  * @param {string} rawSubmission the Submission_Url field (may hold several links)
+ * @param {{deep?: boolean}} [options] deep = read much more of each source; used by the
+ *   Self-Learning auto-review (TASK-67), which reviews a large snapshot in parts.
  * @returns {Promise<{text: string, sources: string[]}>} `sources` are short human labels for the admin UI.
  * @throws {SubmissionFetchError} when no link could be read at all.
  */
-async function buildSubmissionSnapshot(rawSubmission) {
+async function buildSubmissionSnapshot(rawSubmission, options = {}) {
   const links = extractUrls(rawSubmission).map(classify);
   const readable = links.filter((l) => l.type !== "unsupported").slice(0, MAX_SOURCES);
   const unsupported = links.filter((l) => l.type === "unsupported");
@@ -65,7 +67,7 @@ async function buildSubmissionSnapshot(rawSubmission) {
   const results = await Promise.all(
     readable.map(async (link) => {
       try {
-        return { link, ...(await readSource(link)) };
+        return { link, ...(await readSource(link, options)) };
       } catch (err) {
         if (!(err instanceof SubmissionFetchError)) throw err;
         return { link, error: err };

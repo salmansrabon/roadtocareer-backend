@@ -8,9 +8,12 @@
 
 const { SubmissionFetchError } = require("./submissionFetchError");
 
-const MAX_FILES = 12;
-const MAX_FILE_CHARS = 6000;
-const MAX_TOTAL_CHARS = 40000;
+// "deep" is used by the Self-Learning auto-review (TASK-67), which reads a large
+// snapshot in several AI passes instead of cutting it down to one pass.
+const LIMITS = {
+  normal: { files: 12, fileChars: 6000, totalChars: 40000 },
+  deep: { files: 40, fileChars: 20000, totalChars: 120000 },
+};
 const MAX_FILE_BYTES = 100 * 1024;
 const MAX_TREE_LINES = 300;
 const REQUEST_TIMEOUT_MS = 15000;
@@ -85,7 +88,7 @@ function filePriority(path, depth) {
   return 40 - depth;
 }
 
-function selectFiles(tree, subPath) {
+function selectFiles(tree, subPath, maxFiles) {
   const prefix = subPath ? `${subPath.replace(/\/$/, "")}/` : "";
   return tree
     .filter((e) => e.type === "blob" && (!prefix || e.path.startsWith(prefix)))
@@ -93,25 +96,27 @@ function selectFiles(tree, subPath) {
     .filter((e) => TEXT_EXT.test(e.path) && (e.size ?? 0) <= MAX_FILE_BYTES && (e.size ?? 0) > 0)
     .map((e) => ({ path: e.path, score: filePriority(e.path, e.path.split("/").length - 1) }))
     .sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
-    .slice(0, MAX_FILES);
+    .slice(0, maxFiles);
 }
 
-async function fetchRawFile(owner, repo, ref, path) {
+async function fetchRawFile(owner, repo, ref, path, maxChars) {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
   const res = await fetch(`https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(ref)}/${encodedPath}`, {
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`raw fetch ${res.status}`);
   const text = await res.text();
-  return text.length > MAX_FILE_CHARS ? `${text.slice(0, MAX_FILE_CHARS)}\n[...truncated]` : text;
+  return text.length > maxChars ? `${text.slice(0, maxChars)}\n[...truncated]` : text;
 }
 
 /**
  * @param {string} rawUrl a github.com repository URL
+ * @param {{deep?: boolean}} [options] deep = larger caps (see LIMITS)
  * @returns {Promise<{repoName: string, ref: string, text: string, filesIncluded: number, totalFiles: number}>}
  * @throws {SubmissionFetchError}
  */
-async function buildRepoSnapshot(rawUrl) {
+async function buildRepoSnapshot(rawUrl, { deep = false } = {}) {
+  const limits = deep ? LIMITS.deep : LIMITS.normal;
   const { owner, repo, ref: urlRef, subPath } = parseGithubRepoUrl(rawUrl);
 
   const meta = await githubApi(`/repos/${owner}/${repo}`);
@@ -120,8 +125,8 @@ async function buildRepoSnapshot(rawUrl) {
   const tree = treeRes.tree || [];
   if (!tree.length) throw new SubmissionFetchError(422, "The repository is empty.");
 
-  const picked = selectFiles(tree, subPath);
-  const bodies = await Promise.allSettled(picked.map((f) => fetchRawFile(owner, repo, ref, f.path)));
+  const picked = selectFiles(tree, subPath, limits.files);
+  const bodies = await Promise.allSettled(picked.map((f) => fetchRawFile(owner, repo, ref, f.path, limits.fileChars)));
 
   // Lock files stay in the listing (names only, bodies are never fetched) so the
   // reviewer can see they exist. Build/dependency folders are summarised instead
@@ -147,7 +152,7 @@ async function buildRepoSnapshot(rawUrl) {
   picked.forEach((file, i) => {
     if (bodies[i].status !== "fulfilled") return;
     const block = `\n===== FILE: ${file.path} =====\n${bodies[i].value}\n`;
-    if (text.length + block.length > MAX_TOTAL_CHARS) return;
+    if (text.length + block.length > limits.totalChars) return;
     text += block;
     filesIncluded += 1;
   });

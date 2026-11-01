@@ -42,7 +42,7 @@ async function readSource(link, options) {
   if (link.type === "google-slides") return readGoogleSlides(link.id, options);
   if (link.type === "google-folder") return readDriveFolder(link.id, options);
   if (link.type === "google-file") {
-    const limits = options.deep ? 60000 : 20000;
+    const limits = options.deep ? 200000 : 20000;
     const file = await readDriveFile(link.id, { maxChars: limits });
     return { text: file.text, label: `Google Drive file (${file.label})` };
   }

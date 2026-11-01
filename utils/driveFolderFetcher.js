@@ -10,9 +10,11 @@ const { SubmissionFetchError } = require("./submissionFetchError");
 const { readGoogleDoc, readGoogleSheet, readGoogleSlides } = require("./googleDocsFetcher");
 const { sniffKind, extractText } = require("./officeFileText");
 
+// "deep" feeds the rolling multi-part review (multiPartReview.js), which has no context
+// limit, so these are generous: a folder is read in full unless it is really huge.
 const LIMITS = {
   normal: { files: 15, totalChars: 40000, maxFileChars: 20000 },
-  deep: { files: 40, totalChars: 150000, maxFileChars: 60000 },
+  deep: { files: 40, totalChars: 600000, maxFileChars: 200000 },
 };
 const MIN_FILE_CHARS = 3000;
 // Screenshots, videos and audio are not read (no vision/transcription). They are listed by
@@ -25,7 +27,8 @@ const MEDIA_NAMES = [
 const ARCHIVE_NAME = /\.(zip|rar|7z|exe)$/i;
 const mediaKind = (name) => MEDIA_NAMES.find(([, re]) => re.test(name))?.[0] || null;
 const MAX_MEDIA_LINES = 100;
-const MAX_FOLDER_DEPTH = 2; // the linked folder plus one level of sub-folders
+const MAX_FOLDER_DEPTH = 4; // the linked folder plus three levels of sub-folders
+const MAX_FOLDERS_LISTED = 30; // folder listings per submission (one request each)
 const MAX_DOWNLOAD_BYTES = 15 * 1024 * 1024;
 const READ_CONCURRENCY = 4;
 const REQUEST_TIMEOUT_MS = 30000;
@@ -106,11 +109,17 @@ async function collectFiles(rootId, maxFiles) {
   const archives = [];
   const notes = [];
   let rootTitle = "";
+  let listed = 0;
   let level = [{ id: rootId, path: "" }];
   for (let depth = 0; depth < MAX_FOLDER_DEPTH && level.length; depth += 1) {
     const next = [];
     // Sub-folders are listed one at a time to stay clear of Google's rate limit.
     for (const folder of level) {
+      if (listed >= MAX_FOLDERS_LISTED) {
+        notes.push(`${folder.path} (more sub-folders than the limit of ${MAX_FOLDERS_LISTED}, not opened)`);
+        continue;
+      }
+      listed += 1;
       let listing;
       try {
         listing = await listFolder(folder.id);

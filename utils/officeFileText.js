@@ -5,6 +5,7 @@
 // .docx/.xlsx/.pptx are zip archives of XML, read here with a small zip reader
 // (node's zlib only) instead of adding a dependency.
 const zlib = require("zlib");
+const { fairShare } = require("./fairShare");
 
 const MAX_ENTRY_BYTES = 20 * 1024 * 1024; // decompressed size cap per archive entry
 const MAX_TABS = 12; // same as the deep Google Sheet read
@@ -169,11 +170,11 @@ async function extractText(buf, kind, maxChars = Infinity) {
   if (kind === "pptx") return { text: pptxText(zip), detail: "PowerPoint" };
   const all = xlsxSheets(zip);
   const sheets = all.slice(0, MAX_TABS);
-  const perTab = Math.max(3000, Math.floor(maxChars / Math.max(1, sheets.length)));
+  const allowed = fairShare(sheets.map((s) => s.csv.length), Math.max(maxChars, 3000 * sheets.length));
   const more = all.length > sheets.length ? `; ${all.length - sheets.length} more tabs not read` : "";
   return {
     text: sheets
-      .map((s) => `--- TAB: ${s.name} ---\n${s.csv.length > perTab ? `${s.csv.slice(0, perTab)}\n[...tab truncated]` : s.csv}`)
+      .map((s, i) => `--- TAB: ${s.name} ---\n${s.csv.length > allowed[i] ? `${s.csv.slice(0, allowed[i])}\n[...tab truncated]` : s.csv}`)
       .join("\n\n"),
     detail: `Excel workbook, ${sheets.length} ${sheets.length === 1 ? "tab" : "tabs"} read: ${sheets.map((s) => s.name).join(", ")}${more}`,
   };

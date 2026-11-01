@@ -2,13 +2,15 @@
 // the link can view", through Google's public export URLs (no credentials).
 // Images, drawings and formatting are not part of the text export.
 const { SubmissionFetchError } = require("./submissionFetchError");
+const { fairShare } = require("./fairShare");
 
 // A Doc is cut at maxDocPages (~3,000 characters of plain text per page); a Sheet
 // shares sheetChars across up to maxTabs tabs. "deep" is used by the Self-Learning
-// auto-review (TASK-67), which reads a large snapshot in several AI passes.
+// auto-review (TASK-67) and the Evaluate button, which read a large snapshot as a
+// rolling read of many AI passes (multiPartReview.js), so the limit is generous.
 const LIMITS = {
   normal: { sheetChars: 24000, maxTabs: 6, maxDocPages: 15 },
-  deep: { sheetChars: 72000, maxTabs: 12, maxDocPages: 45 },
+  deep: { sheetChars: 250000, maxTabs: 20, maxDocPages: 120 },
 };
 const CHARS_PER_PAGE = 3000;
 const pagesOf = (chars) => Math.max(1, Math.round(chars / CHARS_PER_PAGE));
@@ -119,22 +121,21 @@ async function readGoogleSheet(url, id, { deep = false, maxChars } = {}) {
   const listed = await listSheetTabs(id);
   const linkedFirst = [...listed].sort((a, b) => (b.gid === linkedGid) - (a.gid === linkedGid));
   const tabs = (linkedFirst.length ? linkedFirst : [{ name: linkedGid ? `gid ${linkedGid}` : "first tab", gid: linkedGid }]).slice(0, MAX_TABS);
-  const perTabChars = Math.max(3000, Math.floor(MAX_CHARS / tabs.length));
 
   // The first export doubles as the access check; a private sheet fails here with the 422 message.
   const first = await fetchExport(csvTabExport(id, tabs[0].gid), "Sheet");
   const rest = await Promise.all(tabs.slice(1).map((t) => fetchExport(csvTabExport(id, t.gid), "Sheet").catch(() => "")));
 
-  const blocks = [];
-  const names = [];
-  [first, ...rest].forEach((csv, i) => {
-    const body = compactCsv(csv.replace(/^﻿/, "")).trim();
-    if (!body) return;
-    names.push(tabs[i].name);
-    const clipped = body.length > perTabChars ? `${body.slice(0, perTabChars)}\n[...tab truncated]` : body;
-    blocks.push(`--- TAB: ${tabs[i].name} ---\n${clipped}`);
-  });
-  if (!blocks.length) throw new SubmissionFetchError(422, "The Google Sheet is empty.");
+  const filled = [first, ...rest]
+    .map((csv, i) => ({ name: tabs[i].name, body: compactCsv(csv.replace(/^﻿/, "")).trim() }))
+    .filter((t) => t.body);
+  if (!filled.length) throw new SubmissionFetchError(422, "The Google Sheet is empty.");
+  // Short tabs keep everything; what they leave unused goes to the longer tabs.
+  const allowed = fairShare(filled.map((t) => t.body.length), Math.max(MAX_CHARS, 3000 * filled.length));
+  const names = filled.map((t) => t.name);
+  const blocks = filled.map(
+    (t, i) => `--- TAB: ${t.name} ---\n${t.body.length > allowed[i] ? `${t.body.slice(0, allowed[i])}\n[...tab truncated]` : t.body}`
+  );
 
   const more = listed.length > MAX_TABS ? `; ${listed.length - MAX_TABS} more tabs not read` : "";
   return { text: blocks.join("\n\n"), label: `Google Sheet, tabs read: ${names.join(", ")}${more}` };

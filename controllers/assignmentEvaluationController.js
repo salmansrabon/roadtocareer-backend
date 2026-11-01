@@ -34,15 +34,20 @@ const evaluateAssignmentAnswer = async (req, res) => {
 
     let raw;
     let parts = 1;
+    let unreviewed = [];
     try {
-      ({ raw, parts } = await reviewSubmission(answer.Assignment, snapshot.text));
+      ({ raw, parts, unreviewed } = await reviewSubmission(answer.Assignment, snapshot.text));
     } catch (err) {
       console.error("[assignment-eval] OpenAI call failed:", err.message);
       return res.status(502).json({ message: "AI evaluation failed. Please try again or review manually." });
     }
 
     return res.status(200).json({
-      ...finalizeReview(answer, raw, { skipLatePenalty: await isNoDeadlineAnswer(answer) }),
+      ...finalizeReview(answer, raw, {
+        skipLatePenalty: await isNoDeadlineAnswer(answer),
+        snapshotText: snapshot.text,
+        unreviewed,
+      }),
       meta: { model: EVALUATION_MODEL, sources: snapshot.sources, parts },
     });
   } catch (error) {

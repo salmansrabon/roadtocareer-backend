@@ -181,7 +181,13 @@ const chatAboutAssignmentAnswer = async (req, res) => {
     return res.status(200).json({
       reply: cleanText(raw.reply, 8000) || "(no reply)",
       review: raw.review
-        ? { ...finalizeReview(answer, raw.review, { skipLatePenalty: await isNoDeadlineAnswer(answer) }), meta }
+        ? {
+            ...finalizeReview(answer, raw.review, {
+              skipLatePenalty: await isNoDeadlineAnswer(answer),
+              snapshotText: [ctx.base.text, ...ctx.extras.map((e) => e.text)].join("\n"),
+            }),
+            meta,
+          }
         : null,
       meta,
     });

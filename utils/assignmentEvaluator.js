@@ -5,6 +5,7 @@ const AssignmentAnswer = require("../models/AssignmentAnswer");
 const AssignmentQuestion = require("../models/AssignmentQuestion");
 const { stripHtml } = require("./stripHtml");
 const { EVALUATION_MODEL, callOpenAI } = require("./openaiStructured");
+const { findIncompleteReads, mergeManualReview, formatManualReview } = require("./manualReviewNotes");
 
 const MAX_BULLETS = 8;
 const MAX_BULLET_CHARS = 400;
@@ -28,7 +29,7 @@ const ASSIGNMENT_TYPES = [
 
 const REVIEW_RUBRIC = `You are an experienced reviewer doing what a careful human teacher or senior engineer would do when marking a student's assignment submission in a software testing (QA/SDET) and software engineering training program.
 
-You receive the assignment (title, description, total score) and the student's submission as text. A submission can have several sources, each starting with a "SOURCE n" header: a GitHub repository (a snapshot: the file tree plus a capped set of file contents), a Google Doc (its text), or a Google Sheet (its tabs as CSV, each under a "TAB:" header). Review all sources together as one submission.
+You receive the assignment (title, description, total score) and the student's submission as text. A submission can have several sources, each starting with a "SOURCE n" header: a GitHub repository (a snapshot: the file tree plus a capped set of file contents), a Google Doc (its text), a Google Sheet (its tabs as CSV, each under a "TAB:" header), or a Google Drive folder (each file inside it read separately under its own "FILE:" header: Google Docs, Sheets, PDF, Word, Excel and PowerPoint files as text). Review all sources, and all files of a folder, together as one submission.
 
 STEP 1: UNDERSTAND THE ASSIGNMENT
 - Read the assignment title and description and decide what kind of work it asks for. Set "assignmentType" to exactly one of: ${ASSIGNMENT_TYPES.join("; ")}.
@@ -55,14 +56,25 @@ EVIDENCE RULES
 - The FILE TREE lists every file name, including images, PDFs and lock files. A clearly named file (for example a screenshot or report) counts as evidence that the deliverable exists, but you cannot read its contents, so do not judge them.
 - Google Docs and Sheets are read as plain text. Images, screenshots, diagrams, drawings, charts and formatting are NOT visible. If the assignment expects a screenshot, diagram or similar and the text mentions or labels it, do not deduct for its absence; say that the image could not be viewed. The source header lists which Sheet tabs were read; do not deduct for content that could be in a tab that was not read.
 - If a source ends with "DOCUMENT TRUNCATED", only the first part of that document was read. Judge only what was read: do not deduct for anything that could be in the unread remainder (for example later questions, a conclusion, or later sections), and say plainly in the feedback that only the first pages could be reviewed.
-- Lines such as "SOURCE NOT READABLE" or "LINK NOT READ" mean that content could not be fetched. Do not assume that work is missing and do not give marks for it: say that it could not be verified.
+- Lines such as "SOURCE NOT READABLE", "LINK NOT READ" or "FILE NOT READ" mean that content could not be fetched.
+- A line "FILE PRESENT (image|video|audio ...)" lists a screenshot, video or audio file that EXISTS in the submitted Drive folder (the folder path is part of the name, for example "Evidence/BUG-01.png"). Its content is never viewed, so never judge what it shows. Use these lines only to check that required evidence exists:
+  - If the assignment requires screenshots, videos or similar evidence, and the written answer (document, sheet, test cases, bug reports) refers to it (by file name, an ID such as BUG-01 or TC-05, an "evidence" or "screenshot" column or section, or a plain mention), and matching files are present, give FULL marks for that evidence requirement, do not deduct, and do not mention it in "whyDeducted". Matching only needs to be reasonable (names or IDs, or a sensible count); do not try to verify what a file shows.
+  - If the answer refers to evidence but no matching file is present anywhere in the submission, deduct for the missing evidence.
+  - If the assignment requires evidence, nothing in the answer refers to it and no such file is present, deduct as usual. Do not assume that work is missing and do not give marks for it: say that it could not be verified.
 - If a required deliverable needs something you cannot verify (a Postman, deployed or other external link mentioned only in a README), do not assume it is missing and do not give marks for it: say that it could not be verified. Recorded videos are the exception: see VIDEO RECORDINGS below.
 
 VIDEO RECORDINGS
 - You cannot open or watch external videos. If the assignment requires a recorded video, look in the README or document for a video link (for example YouTube, Google Drive, Loom, Vimeo or a GitHub video/asset link) next to or labelled for that deliverable.
+- A video file listed as "FILE PRESENT (video ...)" in the submitted folder counts the same as a video link.
 - If such a link is there, assume the recording is attached and shows the work as required. Give FULL marks for that video requirement, do not deduct for it, and do not mention it in "whyDeducted". You may say in "whatIsGood" that the video link is provided.
 - If the assignment requires a video and no video link is mentioned anywhere in the submission, deduct for the missing video as usual.
 - If the submission does not contain the kind of work the assignment asks for, score it low and say why.
+
+MANUAL REVIEW
+- Fill "needsManualReview" with every file, document, sheet tab or part of the submission that you could not review, or could review only in part, so that a teacher checks it by hand. Typical cases: a file or link that was not read ("FILE NOT READ", "SOURCE NOT READABLE", "LINK NOT READ"), content that was cut off ("TRUNCATED", "NOT read"), a scanned or empty file, or work the assignment asks you to judge that you cannot judge from text.
+- Each entry has: "file" (the exact file name, path or link as written in the submission), "reason" (one short sentence on what was not reviewed), and "partialText" (a short quote of at most 150 characters from the last text of that file that you DID read, or an empty string if you read none).
+- Do NOT list screenshots, images or videos that are only evidence the answer refers to (see "FILE PRESENT" above), and do not list files you reviewed completely. If nothing needs a manual look, return an empty array.
+- This list is separate from the score: never deduct marks for something you could not read.
 
 SCORING
 - Give an integer score from 0 to the total score.
@@ -84,8 +96,21 @@ const REVIEW_SCHEMA = {
     score: { type: "integer" },
     whatIsGood: { type: "array", items: { type: "string" } },
     whyDeducted: { type: "array", items: { type: "string" } },
+    needsManualReview: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          file: { type: "string" },
+          reason: { type: "string" },
+          partialText: { type: "string" },
+        },
+        required: ["file", "reason", "partialText"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["assignmentType", "score", "whatIsGood", "whyDeducted"],
+  required: ["assignmentType", "score", "whatIsGood", "whyDeducted", "needsManualReview"],
   additionalProperties: false,
 };
 
@@ -95,14 +120,15 @@ const cleanBullets = (list) =>
     .filter(Boolean)
     .slice(0, MAX_BULLETS);
 
-const formatComment = (whatIsGood, whyDeducted, isFullMarks) => {
+const formatComment = (whatIsGood, whyDeducted, isFullMarks, manualReview) => {
   const good = whatIsGood.length ? whatIsGood.map((b) => `- ${b}`).join("\n") : "- (none noted)";
   const bad = whyDeducted.length
     ? whyDeducted.map((b) => `- ${b}`).join("\n")
     : isFullMarks
       ? "- None. Full marks."
       : "- (none noted)";
-  return `What is good:\n${good}\n\nWhy mark is deducted:\n${bad}`;
+  const manual = formatManualReview(manualReview);
+  return `What is good:\n${good}\n\nWhy mark is deducted:\n${bad}${manual ? `\n\n${manual}` : ""}`;
 };
 
 const assignmentBlock = (assignment) => `ASSIGNMENT TITLE: ${assignment.Assignment_Title}
@@ -126,11 +152,22 @@ const loadAnswerForReview = (answerId) =>
 // cleans the bullets, applies the late penalty and builds the comment text.
 // `skipLatePenalty`: Self-Learning students (TASK-67) work on old courses whose
 // deadlines have long passed, so the late rule does not apply to them.
-const finalizeReview = (answer, raw, { skipLatePenalty = false } = {}) => {
+//
+// Files the AI could not review fully are listed under "Needs manual review" (utils/
+// manualReviewNotes.js). `snapshotText` is the text the model was given, scanned for
+// unread / cut-off files; `unreviewed` are files dropped by the review size limit.
+const finalizeReview = (answer, raw, { skipLatePenalty = false, snapshotText = "", unreviewed = [] } = {}) => {
   const totalScore = Number(answer.Assignment.TotalScore);
   const reviewedScore = Math.min(Math.max(Math.round(Number(raw.score) || 0), 0), totalScore);
   const whatIsGood = cleanBullets(raw.whatIsGood);
   const whyDeducted = cleanBullets(raw.whyDeducted);
+  const manualReview = mergeManualReview(
+    [
+      ...findIncompleteReads(snapshotText),
+      ...unreviewed.map((file) => ({ file, reason: "Not reviewed: the submission is larger than the AI review limit", partialText: "" })),
+    ],
+    raw.needsManualReview
+  );
 
   // Late policy: a flat LATE_PENALTY, whatever the total score. Applied here and
   // not in the prompt so it is exact every time. "Late" = first submission time
@@ -152,7 +189,8 @@ const finalizeReview = (answer, raw, { skipLatePenalty = false } = {}) => {
     lateSubmission: { isLate, penalty: latePenalty },
     whatIsGood,
     whyDeducted,
-    comment: formatComment(whatIsGood, whyDeducted, score === totalScore),
+    manualReview,
+    comment: formatComment(whatIsGood, whyDeducted, score === totalScore, manualReview),
   };
 };
 

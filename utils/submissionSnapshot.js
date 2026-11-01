@@ -2,15 +2,17 @@
 //
 // The field is free text: students often paste several links in it (for example
 // a Google Doc and a Sheet separated by ";" or spaces). Every supported link is
-// read (GitHub repository, public Google Doc, public Google Sheet). Anything
+// read (GitHub repository, public Google Doc / Sheet / Slides, public Drive file,
+// or public Drive folder, whose files are read one by one). Anything
 // unreadable is listed in the snapshot as such, so the reviewer never mistakes
 // "could not read" for "not submitted".
 const { SubmissionFetchError } = require("./submissionFetchError");
 const { buildRepoSnapshot } = require("./githubRepoSnapshot");
-const { readGoogleDoc, readGoogleSheet } = require("./googleDocsFetcher");
+const { readGoogleDoc, readGoogleSheet, readGoogleSlides } = require("./googleDocsFetcher");
+const { parseGoogleUrl, readDriveFolder, readDriveFile } = require("./driveFolderFetcher");
 
 const MAX_SOURCES = 4;
-const SUPPORTED_HELP = "Supported links: a public GitHub repository, or a Google Doc or Google Sheet shared as \"Anyone with the link can view\".";
+const SUPPORTED_HELP = "Supported links: a public GitHub repository, or a Google Drive folder, Google Doc, Google Sheet or other Drive file shared as \"Anyone with the link can view\".";
 
 function extractUrls(raw) {
   const found = String(raw || "").match(/https?:\/\/[^\s;,<>"'()]+/gi) || [];
@@ -26,11 +28,8 @@ function classify(rawUrl) {
   }
   const host = url.hostname.toLowerCase();
   if (host === "github.com" || host === "www.github.com") return { type: "github", rawUrl, url };
-  if (host === "docs.google.com") {
-    const m = url.pathname.match(/^\/(document|spreadsheets)\/(?:u\/\d+\/)?d\/([\w-]+)/);
-    // "d/e/<token>" is a published-to-web link, a different format that is not read here.
-    if (m && m[2] !== "e") return { type: m[1] === "document" ? "google-doc" : "google-sheet", rawUrl, url, id: m[2] };
-  }
+  const google = parseGoogleUrl(url);
+  if (google) return { type: `google-${google.kind}`, rawUrl, url, id: google.id };
   return { type: "unsupported", rawUrl, host };
 }
 
@@ -40,6 +39,13 @@ async function readSource(link, options) {
     return { text: s.text, label: `GitHub repository ${s.repoName} (${s.filesIncluded} of ${s.totalFiles} files read)` };
   }
   if (link.type === "google-doc") return readGoogleDoc(link.id, options);
+  if (link.type === "google-slides") return readGoogleSlides(link.id, options);
+  if (link.type === "google-folder") return readDriveFolder(link.id, options);
+  if (link.type === "google-file") {
+    const limits = options.deep ? 60000 : 20000;
+    const file = await readDriveFile(link.id, { maxChars: limits });
+    return { text: file.text, label: `Google Drive file (${file.label})` };
+  }
   return readGoogleSheet(link.url, link.id, options);
 }
 

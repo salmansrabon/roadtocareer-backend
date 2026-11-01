@@ -89,6 +89,30 @@ Road to SDET Team`,
   });
 }
 
+// Nobody reviews Self-Learning work by hand, so when the AI could not fully review a
+// file, tell admins/teachers in-app (no email) which answer to check. The file names and
+// the last text read are in the saved comment under "Needs manual review".
+async function notifyStaffManualReview(answer, result) {
+  const staff = await User.findAll({ where: { role: ["admin", "teacher"] }, attributes: ["username"] });
+  if (!staff.length) return;
+  const assignmentTitle = answer.Assignment?.Assignment_Title || "an assignment";
+  const fileNames = result.manualReview.map((i) => i.file).slice(0, 3).join(", ");
+  const more = result.manualReview.length > 3 ? ` and ${result.manualReview.length - 3} more` : "";
+
+  await notify({
+    recipients: staff.map((s) => s.username),
+    type: NOTIFICATION_TYPES.ASSIGNMENT_SUBMITTED,
+    title: "AI review needs a manual check",
+    body: `${answer.StudentId}'s "${assignmentTitle}" has files the AI could not fully review: ${fileNames}${more}.`,
+    link: `/assignment/answer/${answer.AssignmentId}`,
+    actorUsername: null,
+    actorName: "AI reviewer",
+    entityType: ENTITY_TYPES.ASSIGNMENT_ANSWER,
+    entityId: answer.id,
+    metadata: { assignmentId: Number(answer.AssignmentId), reviewedBy: "ai", manualReview: true },
+  });
+}
+
 /**
  * Runs the AI review for one stored answer and saves the result. Never throws:
  * it is started in the background after the submit response has gone out.
@@ -105,11 +129,13 @@ async function runAutoReview(answerId, snapshot, submittedAt) {
     if (!answer || !answer.Assignment) return;
 
     let raw;
+    let unreviewed = [];
     try {
       if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not set");
       // A long submission is read in parts rather than cut short (multiPartReview.js).
       const review = await reviewSubmission(answer.Assignment, snapshot.text);
       raw = review.raw;
+      unreviewed = review.unreviewed;
       if (review.parts > 1) console.log(`[auto-review] Answer ${answerId} reviewed in ${review.parts} parts.`);
     } catch (err) {
       console.error(`[auto-review] AI review failed for answer ${answerId}:`, err.message);
@@ -117,7 +143,7 @@ async function runAutoReview(answerId, snapshot, submittedAt) {
       return;
     }
 
-    const result = finalizeReview(answer, raw, { skipLatePenalty: true });
+    const result = finalizeReview(answer, raw, { skipLatePenalty: true, snapshotText: snapshot.text, unreviewed });
 
     // Comments is a shared history list (student notes + reviews). Keep it and add
     // this review at the end, labelled so it reads as an AI review.
@@ -129,7 +155,10 @@ async function runAutoReview(answerId, snapshot, submittedAt) {
       reviewed_by: "ai",
       ai_review_status: "done",
     });
-    if (saved) await notifyStudent(answer, result);
+    if (saved) {
+      await notifyStudent(answer, result);
+      if (result.manualReview.length) await notifyStaffManualReview(answer, result);
+    }
   } catch (error) {
     console.error(`[auto-review] Unexpected error for answer ${answerId}:`, error);
     await markIfCurrent(answerId, submittedAt, { ai_review_status: "failed" }).catch(() => {});

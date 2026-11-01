@@ -11,7 +11,7 @@ const { SubmissionFetchError } = require("../utils/submissionFetchError");
 const { isSelfLearningStudent, runAutoReview } = require("../utils/autoAssignmentReview");
 
 const PUBLIC_LINK_HELP =
-  "Please submit a public link: a public GitHub repository, or a Google Doc or Google Sheet shared as \"Anyone with the link can view\".";
+  "Please submit a public link: a public GitHub repository, or a Google Drive folder, Google Doc, Google Sheet or other Drive file shared as \"Anyone with the link can view\".";
 
 const submitAssignmentAnswer = async (req, res) => {
   const { AssignmentId, Submission_Url, Comments } = req.body;

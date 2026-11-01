@@ -155,7 +155,7 @@ module.exports = {
         403: errRes("Submitting for another student", "You may only submit your own assignment."),
         422: jsonRes("Self-Learning student: the AI reviewer cannot read the link", {
           message:
-            "The AI reviewer could not read your link. Please submit a public link: a public GitHub repository, or a Google Doc or Google Sheet shared as \"Anyone with the link can view\".",
+            "The AI reviewer could not read your link. Please submit a public link: a public GitHub repository, or a Google Drive folder, Google Doc, Google Sheet or other Drive file shared as \"Anyone with the link can view\".",
           detail: "None of the submitted links can be read automatically.",
           code: "LINK_NOT_READABLE",
         }),
@@ -282,6 +282,15 @@ module.exports = {
           totalScore: 20,
           whatIsGood: ["You structured the tests with a clear Page Object Model (pages/LoginPage.java)."],
           whyDeducted: ["Thread.sleep is used instead of explicit waits in LoginTest.java."],
+          // Files the AI could not read, or read only in part. Also appended to `comment` under
+          // "Needs manual review". Empty when everything was reviewed.
+          manualReview: [
+            {
+              file: "Test_Plan.pdf",
+              reason: "Only the first 60000 of 91000 characters were read; the rest was NOT read",
+              partialText: "…Section 7 Risks: the Stripe sandbox may rate limit repeated calls",
+            },
+          ],
           comment:
             "What is good:\n- You structured the tests with a clear Page Object Model (pages/LoginPage.java).\n\nWhy mark is deducted:\n- Thread.sleep is used instead of explicit waits in LoginTest.java.",
           meta: {

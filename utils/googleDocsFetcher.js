@@ -38,26 +38,17 @@ async function fetchExport(exportUrl, kind) {
   return res.text();
 }
 
-/**
- * Reads a document, up to LIMITS.*.maxDocPages pages. The link's `?tab=` is deliberately
- * ignored: adding it to the export URL would return that one tab only, whereas the
- * plain export contains every tab of a multi-tab doc.
- * A longer document is cut at a line break and marked, so the reviewer knows the
- * rest was not read and the admin sees it in the source label.
- * @param {string} id the document id
- * @param {{deep?: boolean}} [options]
- * @returns {Promise<{text: string, label: string}>}
- */
-async function readGoogleDoc(id, { deep = false } = {}) {
-  const MAX_DOC_PAGES = (deep ? LIMITS.deep : LIMITS.normal).maxDocPages;
-  const MAX_DOC_CHARS = MAX_DOC_PAGES * CHARS_PER_PAGE;
-  const raw = await fetchExport(`https://docs.google.com/document/d/${id}/export?format=txt`, "Doc");
+// Docs and Slides both export as plain text through the same URL shape.
+async function readTextExport(kind, path, { deep = false, maxChars } = {}) {
+  const MAX_DOC_CHARS = maxChars ?? (deep ? LIMITS.deep : LIMITS.normal).maxDocPages * CHARS_PER_PAGE;
+  const MAX_DOC_PAGES = pagesOf(MAX_DOC_CHARS);
+  const raw = await fetchExport(`https://docs.google.com/${path}/export?format=txt`, kind);
   const clean = raw.replace(/^﻿/, "").trim();
-  if (!clean) throw new SubmissionFetchError(422, "The Google Doc is empty.");
+  if (!clean) throw new SubmissionFetchError(422, `The Google ${kind} is empty.`);
 
   const totalPages = pagesOf(clean.length);
   if (clean.length <= MAX_DOC_CHARS) {
-    return { text: clean, label: `Google Doc (about ${totalPages} ${totalPages === 1 ? "page" : "pages"}, fully read)` };
+    return { text: clean, label: `Google ${kind} (about ${totalPages} ${totalPages === 1 ? "page" : "pages"}, fully read)` };
   }
 
   const head = clean.slice(0, MAX_DOC_CHARS);
@@ -65,9 +56,25 @@ async function readGoogleDoc(id, { deep = false } = {}) {
   const body = lastBreak > MAX_DOC_CHARS * 0.9 ? head.slice(0, lastBreak) : head;
   return {
     text: `${body}\n[...DOCUMENT TRUNCATED: only the first ${MAX_DOC_PAGES} pages of about ${totalPages} were read; the rest was NOT read]`,
-    label: `Google Doc (first ${MAX_DOC_PAGES} of about ${totalPages} pages read; the rest was not read)`,
+    label: `Google ${kind} (first ${MAX_DOC_PAGES} of about ${totalPages} pages read; the rest was not read)`,
   };
 }
+
+/**
+ * Reads a document, up to LIMITS.*.maxDocPages pages. The link's `?tab=` is deliberately
+ * ignored: adding it to the export URL would return that one tab only, whereas the
+ * plain export contains every tab of a multi-tab doc.
+ * A longer document is cut at a line break and marked, so the reviewer knows the
+ * rest was not read and the admin sees it in the source label.
+ * @param {string} id the document id
+ * @param {{deep?: boolean, maxChars?: number}} [options] maxChars overrides the page limit
+ *   (used to share one budget between the files of a Drive folder)
+ * @returns {Promise<{text: string, label: string}>}
+ */
+const readGoogleDoc = (id, options) => readTextExport("Doc", `document/d/${id}`, options);
+
+/** Reads the text of a Google Slides deck (slide text and speaker notes; images are not read). */
+const readGoogleSlides = (id, options) => readTextExport("Slides", `presentation/d/${id}`, options);
 
 // Names and gids of a sheet's tabs, from the public "htmlview" page. Best effort:
 // returns [] if the page cannot be read, and the caller falls back to one tab.
@@ -102,11 +109,12 @@ const compactCsv = (csv) => csv.split(/\r?\n/).filter((line) => line.replace(/[,
  * back to the linked tab alone if the tab list cannot be read.
  * @param {URL} url a docs.google.com/spreadsheets/d/<id> link
  * @param {string} id the spreadsheet id
- * @param {{deep?: boolean}} [options]
+ * @param {{deep?: boolean, maxChars?: number}} [options] maxChars overrides the character limit
  * @returns {Promise<{text: string, label: string}>}
  */
-async function readGoogleSheet(url, id, { deep = false } = {}) {
-  const { sheetChars: MAX_CHARS, maxTabs: MAX_TABS } = deep ? LIMITS.deep : LIMITS.normal;
+async function readGoogleSheet(url, id, { deep = false, maxChars } = {}) {
+  const { sheetChars, maxTabs: MAX_TABS } = deep ? LIMITS.deep : LIMITS.normal;
+  const MAX_CHARS = maxChars ?? sheetChars;
   const linkedGid = (url.searchParams.get("gid") || url.hash.match(/gid=(\d+)/)?.[1] || "").replace(/\D/g, "");
   const listed = await listSheetTabs(id);
   const linkedFirst = [...listed].sort((a, b) => (b.gid === linkedGid) - (a.gid === linkedGid));
@@ -132,4 +140,4 @@ async function readGoogleSheet(url, id, { deep = false } = {}) {
   return { text: blocks.join("\n\n"), label: `Google Sheet, tabs read: ${names.join(", ")}${more}` };
 }
 
-module.exports = { readGoogleDoc, readGoogleSheet };
+module.exports = { readGoogleDoc, readGoogleSheet, readGoogleSlides };

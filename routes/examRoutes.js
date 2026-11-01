@@ -56,6 +56,9 @@ router.get("/config/:examId/submissions", authenticateUser, requireAdmin, examCo
 // Get active exams for student's course/batch
 router.get("/student/active", authenticateUser, examConfigController.getActiveExamsForStudent);
 
+// List every exam the student has submitted, in any batch (ended exams included)
+router.get("/student/results", authenticateUser, examSubmissionController.getMyExamResults);
+
 // Get exam questions for student (without hints)
 router.get("/student/:examId", authenticateUser, examSubmissionController.getExamForStudent);
 

@@ -232,6 +232,7 @@ module.exports = {
       summary: "Get a student's quiz result",
       parameters: [
         { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
+        { name: "courseId", in: "query", required: false, description: "An earlier batch whose quiz attempt was archived when the student was migrated. Students may only pass their own previous_course_id (else 403); admin/teacher may pass any. 404 when nothing was archived for it. Omit for the current batch.", schema: { type: "string", example: "sdet152025" } },
       ],
       responses: {
         200: jsonRes("Quiz result", {

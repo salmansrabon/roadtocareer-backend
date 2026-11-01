@@ -7,6 +7,7 @@ const sequelize = require("../config/db");
 const { sendEmail } = require("../utils/emailHelper");
 const { notify, notifyRoles, wasRecentlyNotified } = require("../utils/notificationHelper");
 const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
+const { summarizeExamSubmissions } = require("../utils/examResultsHelper");
 
 // A submit may arrive a little after the exam clock hits 0 (auto-submit at 0:00
 // plus network time); anything later than this is rejected.
@@ -325,6 +326,43 @@ exports.getStudentExamResult = async (req, res) => {
 
     } catch (error) {
         console.error("Error getting exam result:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+// Every exam the logged-in student has submitted, across all the batches they have been in,
+// newest first. Backs the "My Exam Results" list: the active-exams endpoint only returns exams
+// whose window has not ended. The student comes from the JWT, never from the URL.
+exports.getMyExamResults = async (req, res) => {
+    try {
+        const student = await Student.findOne({
+            where: { StudentId: req.user.username },
+            attributes: ["StudentId", "CourseId", "exam_answer"]
+        });
+        if (!student) {
+            return res.status(404).json({ message: "Student not found" });
+        }
+
+        const submissions = Array.isArray(student.exam_answer) ? student.exam_answer : [];
+
+        // Older submissions may lack the exam title / course / batch: look those exams up.
+        const needLookup = submissions.filter(
+            (s) => s && s.exam_id != null && (!s.exam_title || !s.course_id || s.batch_no == null)
+        );
+        const configs = needLookup.length > 0
+            ? await ExamConfig.findAll({
+                where: { id: { [Op.in]: needLookup.map((s) => Number(s.exam_id)) } },
+                include: [{ model: Course, attributes: ["courseId", "course_title", "batch_no"] }]
+            })
+            : [];
+        const configById = new Map(configs.map((c) => [c.id, c]));
+
+        res.status(200).json({
+            message: "Exam results retrieved successfully",
+            data: { results: summarizeExamSubmissions(submissions, student.CourseId, configById) }
+        });
+    } catch (error) {
+        console.error("Error getting exam results list:", error);
         res.status(500).json({ message: "Internal server error" });
     }
 };

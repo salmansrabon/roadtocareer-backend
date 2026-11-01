@@ -55,7 +55,7 @@ const Student = sequelize.define("Student", {
         allowNull: false
     },
     salutation: {
-        type: DataTypes.ENUM("Mr", "Mrs"),
+        type: DataTypes.ENUM("Mr", "Ms"),
         defaultValue: "Mr"
     },
     student_name: {
@@ -195,6 +195,11 @@ const Student = sequelize.define("Student", {
         type: DataTypes.DATE,
         allowNull: true,
         comment: 'When the student opened the quiz; the quiz clock is this + mcq_config.totalTime. NULL = not started.'
+    },
+    quiz_history: {
+        type: DataTypes.TEXT('long'),
+        allowNull: true,
+        comment: 'JSON { [courseId]: [ { quiz_answer, quiz_started_at, archived_at } ] }: quiz attempts archived when the student was migrated (newest last).'
     },
     exam_answer: {
         type: DataTypes.JSON,

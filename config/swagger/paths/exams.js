@@ -156,6 +156,38 @@ module.exports = {
       },
     },
   },
+  "/api/exam/student/results": {
+    get: {
+      tags: ["Exams"],
+      summary: "List every exam the logged-in student has submitted, in any batch (newest first)",
+      description:
+        "Unlike /api/exam/student/active this does not depend on the exam window, so ended exams and exams from earlier batches are included. `isCurrentBatch` is false for a previous batch. `totalScore` is null until the submission is evaluated.",
+      security: [{ BearerAuth: [] }],
+      responses: {
+        200: jsonRes("Submitted exams", {
+          message: "Exam results retrieved successfully",
+          data: {
+            results: [
+              {
+                examId: 3,
+                examTitle: "Mid-term written exam",
+                courseId: "sdet152025",
+                batch_no: "15",
+                isCurrentBatch: false,
+                submittedAt: "2026-01-10T10:00:00.000Z",
+                evaluated: true,
+                totalScore: 42,
+                maxScore: 50,
+              },
+            ],
+          },
+        }),
+        401: UNAUTHORIZED,
+        404: errRes("Student not found", "Student not found"),
+        500: SERVER_ERROR,
+      },
+    },
+  },
   "/api/exam/student/{examId}": {
     get: {
       tags: ["Exams"],

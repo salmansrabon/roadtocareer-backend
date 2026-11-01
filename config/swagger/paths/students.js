@@ -204,10 +204,11 @@ module.exports = {
   "/api/students/attendance/{studentId}": {
     get: {
       tags: ["Students"],
-      summary: "Get attendance history for a student (current batch only)",
+      summary: "Get attendance history for a student (current batch, or an earlier batch with ?courseId=)",
       security: [{ BearerAuth: [] }],
       parameters: [
         { name: "studentId", in: "path", required: true, schema: { type: "string", example: "RTS-JAD-2601" } },
+        { name: "courseId", in: "query", required: false, description: "An earlier batch of this student. Students may only pass their own previous_course_id (else 403); admin/teacher may pass any. Omit for the current batch. A batch with no saved entries returns an empty list.", schema: { type: "string", example: "sdet152025" } },
       ],
       responses: {
         200: jsonRes(

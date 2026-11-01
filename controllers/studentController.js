@@ -26,6 +26,7 @@ const {
 const { calculateProfileScore } = require("../utils/profileScoreHelper");
 const { getCurrentOrLastEmployer } = require("../utils/employmentExperienceHelper");
 const { getStarredAssignmentStatus, STARRED_PASS_PERCENT } = require("../utils/starredAssignmentHelper");
+const { planQuizOnMigration } = require("../utils/quizHistoryHelper");
 const { buildSelfLearningPaymentEmail } = require("../utils/selfLearningEmail");
 const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
 
@@ -1644,6 +1645,7 @@ exports.markAttendance = async (req, res) => {
 exports.getAttendance = async (req, res) => {
   try {
     const { studentId } = req.params;
+    const requestedCourseId = req.query.courseId;
 
     // ✅ Fetch Attendance Record for the Given Student ID
     const attendance = await Attendance.findOne({
@@ -1656,15 +1658,37 @@ exports.getAttendance = async (req, res) => {
         .json({ message: "No attendance record found for this student." });
     }
 
+    // Which batch to show: the row's current one (default), or an earlier batch whose
+    // entries migration preserved in the attendanceList JSON. A student may only open their
+    // own previous batch; admins/teachers may open any.
+    let viewCourseId = attendance.courseId;
+    let viewingPrevious = false;
+    if (requestedCourseId && requestedCourseId !== attendance.courseId) {
+      if (req.user?.role === "student") {
+        const student = await Student.findOne({
+          where: { StudentId: studentId },
+          attributes: ["previous_course_id"],
+        });
+        if (req.user.username !== studentId || requestedCourseId !== student?.previous_course_id) {
+          return res
+            .status(403)
+            .json({ message: "You can only view your own previous batch." });
+        }
+      }
+      viewCourseId = requestedCourseId;
+      viewingPrevious = true;
+    }
+
     // ✅ Fetch course to get total_class
-    const course = await Course.findOne({ where: { courseId: attendance.courseId } });
+    const course = await Course.findOne({ where: { courseId: viewCourseId } });
     const totalClass = course ? (course.total_class || 30) : 30;
 
-    // ✅ Parse attendance list for the row's current batch only
+    // ✅ Parse attendance list for the batch being viewed. rowCourseId stays the row's own
+    // course: it only decides which batch a legacy (unkeyed) array belongs to.
     const parsedAttendanceList = getBatchEntries(
       attendance.attendanceList,
       attendance.courseId,
-      attendance.courseId
+      viewCourseId
     );
 
     // ✅ Calculate attendance stats using helper function
@@ -1676,10 +1700,10 @@ exports.getAttendance = async (req, res) => {
     return res.status(200).json({
       studentId: attendance.StudentId,
       studentName: attendance.student_name,
-      courseId: attendance.courseId,
-      courseTitle: attendance.courseTitle,
-      batch_no: attendance.batch_no,
-      attendanceList: JSON.stringify(parsedAttendanceList), // ✅ Current batch only, flat-array contract for the frontend
+      courseId: viewCourseId,
+      courseTitle: viewingPrevious ? (course?.course_title ?? viewCourseId) : attendance.courseTitle,
+      batch_no: viewingPrevious ? (course?.batch_no ?? "") : attendance.batch_no,
+      attendanceList: JSON.stringify(parsedAttendanceList), // ✅ One batch only, flat-array contract for the frontend
       totalClicks,
       totalClass,
       attendancePercentage,
@@ -1789,11 +1813,22 @@ exports.migrateStudent = async (req, res) => {
     // directly — this also keeps the students.remark mirror in sync.
     await appendRemarkEntry(studentId, remark || `Migrated from batch ${oldBatch} to ${batch_no}`);
 
+    // Keep the old batch's quiz attempt (students.quiz_history, keyed by courseId) instead of
+    // destroying it, and clear the live quiz so a new one can be taken in the new batch;
+    // migrating back to a batch restores its newest attempt. A same-course migration also
+    // archives the attempt and clears the quiz.
+    const quizPlan = planQuizOnMigration({
+      oldCourseId,
+      newCourseId: CourseId,
+      quizAnswer: student.quiz_answer,
+      quizStartedAt: student.quiz_started_at,
+      quizHistory: student.quiz_history,
+    });
+
     //Update student migration info
     await Student.update(
       {
-        quiz_answer: null,
-        quiz_started_at: null, // a new batch's quiz starts with a fresh clock
+        ...quizPlan, // quiz_answer, quiz_started_at (a new batch's quiz starts with a fresh clock), quiz_history
         CourseId, // Update courseId
         package, // Update package
         batch_no, // Update new batch

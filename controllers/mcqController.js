@@ -5,6 +5,7 @@ const Student = require("../models/Student");
 const McqConfig = require("../models/McqConfig");
 const { notifyRoles } = require("../utils/notificationHelper");
 const { NOTIFICATION_TYPES, ENTITY_TYPES } = require("../utils/notificationTypes");
+const { getArchivedAttempt } = require("../utils/quizHistoryHelper");
 
 exports.addMCQ = async (req, res) => {
     try {
@@ -549,6 +550,7 @@ exports.resetQuiz = async (req, res) => {
 exports.getStudentResult = async (req, res) => {
     try {
         const { studentId } = req.params;
+        const requestedCourseId = req.query.courseId;
 
         // ✅ Fetch student details
         const student = await Student.findOne({
@@ -559,12 +561,36 @@ exports.getStudentResult = async (req, res) => {
             return res.status(404).json({ message: "Student not found." });
         }
 
+        // Which attempt to show: the live one (default), or one archived when the student was
+        // migrated away from that batch (students.quiz_history, keyed by courseId).
+        let source = {
+            quizAnswer: student.quiz_answer,
+            quizStartedAt: student.quiz_started_at,
+            courseId: student.CourseId
+        };
+        if (requestedCourseId && requestedCourseId !== student.CourseId) {
+            // A student may only open their own previous batch; admins/teachers may open any.
+            if (req.user?.role === "student" &&
+                (req.user.username !== studentId || requestedCourseId !== student.previous_course_id)) {
+                return res.status(403).json({ message: "You can only view your own previous batch." });
+            }
+            const archived = getArchivedAttempt(student.quiz_history, requestedCourseId);
+            if (!archived) {
+                return res.status(404).json({ message: "No quiz attempt found for that batch." });
+            }
+            source = {
+                quizAnswer: archived.quiz_answer,
+                quizStartedAt: archived.quiz_started_at,
+                courseId: requestedCourseId
+            };
+        }
+
         // ✅ Parse quiz_answer field safely
         let parsedQuizAnswer;
         try {
-            parsedQuizAnswer = typeof student.quiz_answer === "string"
-                ? JSON.parse(student.quiz_answer)
-                : student.quiz_answer;
+            parsedQuizAnswer = typeof source.quizAnswer === "string"
+                ? JSON.parse(source.quizAnswer)
+                : source.quizAnswer;
         } catch (error) {
             console.error("Error parsing quiz_answer JSON:", error);
             return res.status(500).json({ message: "Invalid quiz_answer format in database." });
@@ -575,13 +601,14 @@ exports.getStudentResult = async (req, res) => {
             // An attempt that ended with nothing answered (time ran out, or the
             // page auto-submitted after the student left the tab) is a real
             // submission scored 0, matching the admin results list.
-            const endedConfig = student.quiz_started_at
-                ? await McqConfig.findOne({ where: { CourseId: student.CourseId } })
+            const endedConfig = source.quizStartedAt
+                ? await McqConfig.findOne({ where: { CourseId: source.courseId } })
                 : null;
-            if (endedConfig && getQuizState(student.quiz_started_at, [], endedConfig.totalTime).status === "expired") {
+            if (endedConfig && getQuizState(source.quizStartedAt, [], endedConfig.totalTime).status === "expired") {
                 return res.status(200).json({
                     student_name: student.student_name,
                     StudentId: studentId,
+                    courseId: source.courseId,
                     totalMarks: 0,
                     totalQuestions: endedConfig.totalQuestion,
                     answerSheet: []
@@ -617,15 +644,16 @@ exports.getStudentResult = async (req, res) => {
         }
 
         const mcqConfig = await McqConfig.findOne({
-            where: { CourseId: student.CourseId }
+            where: { CourseId: source.courseId }
         });
 
-
         return res.status(200).json({
-            student_name:student.student_name,
+            student_name: student.student_name,
             StudentId: studentId,
+            courseId: source.courseId,
             totalMarks: totalMarks,
-            totalQuestions: mcqConfig.totalQuestion,
+            // The quiz config of an old batch may have been deleted: fall back to what was answered.
+            totalQuestions: mcqConfig ? mcqConfig.totalQuestion : answerSheet.length,
             answerSheet
         });
 

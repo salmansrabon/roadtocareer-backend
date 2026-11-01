@@ -10,6 +10,8 @@ const { buildSubmissionSnapshot } = require("../utils/submissionSnapshot");
 const { SubmissionFetchError } = require("../utils/submissionFetchError");
 const { isSelfLearningStudent, runAutoReview } = require("../utils/autoAssignmentReview");
 
+const RESUBMIT_SUPPRESS_MS = 60 * 1000; // admin notification: ignore a repeat resubmit within 1 minute
+
 const PUBLIC_LINK_HELP =
   "Please submit a public link: a public GitHub repository, or a Google Drive folder, Google Doc, Google Sheet or other Drive file shared as \"Anyone with the link can view\".";
 
@@ -68,7 +70,12 @@ const submitAssignmentAnswer = async (req, res) => {
 
     const reviewFields = autoReview ? { ai_review_status: "pending" } : {};
     if (existing) {
-      await existing.update({ Submission_Url, Comments, ...reviewFields });
+      existing.set({ Submission_Url, Comments, ...reviewFields });
+      // A student who fixes their work in the same GitHub repo resubmits the SAME link, so
+      // no field differs and Sequelize would skip the save: "Updated Date" would stay old.
+      // Flagging updatedAt forces the write and records when it was resubmitted.
+      existing.changed("updatedAt", true);
+      await existing.save();
       answer = existing;
     } else {
       answer = await AssignmentAnswer.create({ AssignmentId, StudentId, Submission_Url, Comments, ...reviewFields });
@@ -104,10 +111,10 @@ const submitAssignmentAnswer = async (req, res) => {
       attributes: ['username', 'email']
     });
 
-    const subject = `Assignment Submitted - ${assignment?.Assignment_Title || 'Untitled'}`;
+    const subject = `Assignment ${existing ? 'Resubmitted' : 'Submitted'} - ${assignment?.Assignment_Title || 'Untitled'}`;
     const text = `Hello Admin,
-  
-  ✅ A student has submitted an assignment.
+
+  ✅ A student has ${existing ? 'resubmitted an updated version of' : 'submitted'} an assignment.
   
   👤 Student: ${student?.student_name || StudentId}
   📄 Assignment: ${assignment?.Assignment_Title || AssignmentId}
@@ -125,11 +132,16 @@ const submitAssignmentAnswer = async (req, res) => {
     // noisier half of the problem. notify() never throws, so a notification
     // failure can never fail the submission.
     const staffUsernames = admins.map((a) => a.username);
+    //
+    // A resubmission uses a much shorter window: the student may have just fixed their
+    // code a few minutes after the first submit, and the admin must still hear about it.
+    // Only a double click / rapid re-save is swallowed.
     const alreadyNotified = await wasRecentlyNotified({
       recipients: staffUsernames,
       type: NOTIFICATION_TYPES.ASSIGNMENT_SUBMITTED,
       entityType: ENTITY_TYPES.ASSIGNMENT_ANSWER,
       entityId: answer.id,
+      ...(existing ? { windowMs: RESUBMIT_SUPPRESS_MS } : {}),
     });
 
     if (!alreadyNotified) {

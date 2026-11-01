@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const { Op } = require("sequelize");
 const { sendEmail } = require("../utils/emailHelper");
 const { getLinkedStudentAccounts } = require("../utils/linkedAccountsHelper");
+const { looksLikeEmail, resolveEmailLogin } = require("../utils/emailLoginHelper");
 
 // TASK-47: dual-write the JWT into an httpOnly cookie alongside the existing
 // response-body token (backward compatible — Bearer-header clients are
@@ -74,25 +75,42 @@ exports.register = async (req, res) => {
 };
 
 // ✅ Login User
+// `username` is a StudentId / staff username, or the email on the account. A
+// teacher/admin email opens that staff account (own password only); a student
+// email opens the most recently enrolled active account, and the Profile
+// dropdown's account switcher reaches the others.
 exports.login = async (req, res) => {
     try {
-        const { username, password } = req.body; // ✅ Expect username instead of email
+        const { username, password } = req.body; // ✅ `username` may also be an email
 
-        // ✅ Find user by username
-        const user = await User.findOne({ where: { username } });
-        if (!user) {
-            return res.status(401).json({ message: "Invalid credentials" });
-        }
+        let user;
+        if (looksLikeEmail(username)) {
+            const result = await resolveEmailLogin(username, password);
+            if (result.status === "disabled") {
+                return res.status(403).json({ message: "Sorry, your account is disabled." });
+            }
+            if (result.status !== "ok") {
+                return res.status(401).json({ message: "Invalid credentials" });
+            }
+            user = result.user;
+            console.log(`[email-login] -> ${user.username}`);
+        } else {
+            // ✅ Find user by username
+            user = await User.findOne({ where: { username } });
+            if (!user) {
+                return res.status(401).json({ message: "Invalid credentials" });
+            }
 
-        // ✅ Check if the account is disabled
-        if (user.isValid === 0) {
-            return res.status(403).json({ message: "Sorry, your account is disabled." });
-        }
+            // ✅ Check if the account is disabled
+            if (user.isValid === 0) {
+                return res.status(403).json({ message: "Sorry, your account is disabled." });
+            }
 
-        // ✅ Compare passwords
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            // ✅ Compare passwords
+            const isMatch = await bcrypt.compare(password, user.password);
+            if (!isMatch) {
+                return res.status(401).json({ message: "Invalid credentials" });
+            }
         }
 
         // ✅ Generate JWT Token

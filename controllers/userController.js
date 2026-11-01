@@ -72,7 +72,7 @@ exports.updateUserStatus = async (req, res) => {
                 
                 await sendEmail(user.email,
                     "Road to SDET Student Enrollment Confirmation",
-                    `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 Student ID: ${studentId}\n🔑 Password: ${newPassword}\n\nPlease log in and change your password.\nSite URL: https://www.roadtocareer.net/login\n\n And also please join our Discord community with following link:\n\n🔗${discordServerName}: ${discordServerLink}\n\nIn our Discord server, you can:\n• Connect with fellow students and instructors\n• Get real-time help and support\n• Participate in study groups and discussions\n• Get career guidance and job opportunities\n• Any announcements and updates regarding classes \n\nWelcome to our community!\n\nRegards,\nRoad to SDET Team`
+                    `Dear ${student.student_name},\n\nYour account has been activated successfully.\n\n👤 Student ID: ${studentId}\n🔑 Password: ${newPassword}\n\nYou can log in with either your Student ID or your email address, together with this password.\n\nPlease log in and change your password.\nSite URL: https://www.roadtocareer.net/login\n\n And also please join our Discord community with following link:\n\n🔗${discordServerName}: ${discordServerLink}\n\nIn our Discord server, you can:\n• Connect with fellow students and instructors\n• Get real-time help and support\n• Participate in study groups and discussions\n• Get career guidance and job opportunities\n• Any announcements and updates regarding classes \n\nWelcome to our community!\n\nRegards,\nRoad to SDET Team`
                 );
 
                 responseMessage += " & New password sent to email";

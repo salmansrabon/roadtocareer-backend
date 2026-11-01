@@ -26,7 +26,7 @@ const components = {
         properties: {
           username: {
             type: "string",
-            description: "Student ID for students, or the admin username",
+            description: "Student ID or staff username, or the email on the account. A student email opens the most recently enrolled active course account (any of the student's active passwords works); a teacher/admin email opens that staff account and needs its own password.",
             example: "RTS-JAD-2601",
           },
           password: { type: "string", format: "password", example: "123456" },

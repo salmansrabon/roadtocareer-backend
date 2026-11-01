@@ -17,6 +17,9 @@ const { reviewSubmission } = require("./multiPartReview");
 
 const AI_COMMENT_PREFIX = "AI review:\n";
 
+// The review comment is markdown; the email is plain text.
+const plainText = (markdown) => markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*/g, "");
+
 // Same lookup as getCourseProgress: the student's package name on the student's
 // own course, flagged is_self_learning. Self-Learning is per account (TASK-63).
 // A course with no Self-Learning package never matches, so its students always
@@ -58,7 +61,7 @@ Your assignment titled "${assignmentTitle}" has been reviewed automatically by A
 
 ✅ Score: ${scoreText}
 💬 Comments:
-${result.comment}
+${plainText(result.comment)}
 
 You can improve your work and submit again at any time. Each submission gets a new review.
 

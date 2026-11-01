@@ -280,8 +280,9 @@ module.exports = {
           assignmentType: "UI automation",
           score: 17,
           totalScore: 20,
-          whatIsGood: ["You structured the tests with a clear Page Object Model (pages/LoginPage.java)."],
-          whyDeducted: ["Thread.sleep is used instead of explicit waits in LoginTest.java."],
+          whatWentWell: "Good effort overall. You structured the tests with a clear Page Object Model (pages/LoginPage.java).",
+          improvements: [{ points: 3, text: "Thread.sleep is used instead of explicit waits in LoginTest.java. Replace it with explicit waits." }],
+          overall: "Solid structure; focus on replacing fixed sleeps with explicit waits.",
           // Files the AI could not read, or read only in part. Also appended to `comment` under
           // "Needs manual review". Empty when everything was reviewed.
           manualReview: [
@@ -292,7 +293,7 @@ module.exports = {
             },
           ],
           comment:
-            "What is good:\n- You structured the tests with a clear Page Object Model (pages/LoginPage.java).\n\nWhy mark is deducted:\n- Thread.sleep is used instead of explicit waits in LoginTest.java.",
+            "### What went well\nGood effort overall. You structured the tests with a clear Page Object Model (pages/LoginPage.java).\n\n### Areas for improvement\n- **(-3)** Thread.sleep is used instead of explicit waits in LoginTest.java. Replace it with explicit waits.\n\n**Overall:** Solid structure; focus on replacing fixed sleeps with explicit waits.",
           meta: {
             model: "gpt-6-luna",
             sources: [

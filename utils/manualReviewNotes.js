@@ -5,7 +5,7 @@
 // that WAS read are exact and do not depend on the model remembering them. The model
 // adds its own entries for what only it can judge (see needsManualReview in the
 // review schema); both are merged here.
-const REF_CHARS = 160; // how much of the last text read is quoted as the partial-text reference
+const REF_CHARS = 100; // how much of the last text read is quoted as the partial-text reference
 const MAX_ITEMS = 15;
 
 // Any "[...something truncated / NOT read]" marker written into the snapshot.
@@ -110,10 +110,11 @@ function mergeManualReview(detected, fromModel) {
 /** The section appended to the review comment; empty string when nothing needs a manual look. */
 function formatManualReview(items) {
   if (!items.length) return "";
-  const lines = items.map(
-    (i) => `- ${i.file}: ${i.reason}.${i.partialText ? ` Last text read: "${i.partialText}"` : ""}`.replace(/\.\.(?= |$)/g, ".")
-  );
-  return `Needs manual review (the AI could not fully review these, so a teacher should check them):\n${lines.join("\n")}`;
+  const lines = items.map((i) => {
+    const reason = i.reason.replace(/\.+$/, "");
+    return `- **${i.file}**: ${reason}.${i.partialText ? ` Last text read: "${i.partialText}"` : ""}`;
+  });
+  return `### Needs manual review\nThe AI could not fully review the following, so a teacher should check them:\n${lines.join("\n")}`;
 }
 
 module.exports = { findIncompleteReads, mergeManualReview, formatManualReview };

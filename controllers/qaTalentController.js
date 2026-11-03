@@ -1,6 +1,7 @@
 const Student = require("../models/Student");
 const Course = require("../models/Course");
 const { Op, Sequelize } = require("sequelize");
+const { qaTalentGate } = require("../utils/qaTalentGate");
 
 // ✅ AI-Powered Search using OpenAI GPT-4-mini
 exports.aiSearchQATalent = async (req, res) => {
@@ -18,7 +19,7 @@ exports.aiSearchQATalent = async (req, res) => {
     });
 
     // Create a prompt for GPT-4-mini to extract search parameters
-    const systemPrompt = `You are an intelligent QA talent search assistant. Your goal is to find the BEST matching candidates even when exact skills aren't available. Always return relevant results by using fallback skills and related technologies.
+    const systemPrompt = `You are an intelligent tech talent search assistant for developers, software engineers, QA engineers and SDETs. Your goal is to find the BEST matching candidates even when exact skills aren't available. Always return relevant results by using fallback skills and related technologies.
 
 CRITICAL "BEST" CANDIDATE DETECTION:
 When users ask for "best", "top", "elite", "premium", "highest quality", "most qualified", "star", "excellent", or similar superlatives, set "findBest": true. There is no scoring/ranking algorithm — matching candidates are simply returned ordered by most recently updated profile (freshest data first), limited to the requested count (or 1 if no count is given).
@@ -27,6 +28,7 @@ Database Schema:
 - students table with fields: student_name, email, university, batch_no, passingYear, company, designation, profession, lookingForJob (enum: 'Yes'/'No'), isISTQBCertified (enum: 'Yes'/'No'), certificate (URL string - when present, student is "verified")
 - employment (JSON): { totalExperience: "2.5", company: [{companyName, designation, experience}] }
 - skill (JSON): { soft_skill: "text", technical_skill: ["Selenium", "Java", "Python", "JavaScript", "TypeScript", "C#", "API Testing", "REST API", "SOAP API", "Postman","Newman", "SQL", "MySQL", "PostgreSQL", "MongoDB", "Cypress", "Playwright", "TestNG", "JUnit", "Pytest", "Jest", "Mocha", "JIRA", "TestRail", "Zephyr", "Jenkins", "Git", "GitHub", "GitLab", "Appium", "Mobile Testing", "Android Testing", "iOS Testing", "Performance Testing", "Load Testing", "Stress Testing", "JMeter", "LoadRunner", "Gatling", "Cucumber", "BDD", "TDD", "Agile", "Scrum", "Manual Testing", "Regression Testing", "Smoke Testing", "Sanity Testing", "Integration Testing", "UAT", "Exploratory Testing", "Usability Testing", "Compatibility Testing", "Cross-browser Testing", "Security Testing", "Accessibility Testing", "ETL Testing", "Database Testing", "Visual Testing","Figma", "Contract Testing", "Session-based Testing", "Risk-based Testing", "Test Data Management", "Localization Testing", "Internationalization Testing", "A/B Testing", "Chaos Engineering", "Test Cases", "Test Plan", "Test Estimation", "Acceptance Criteria", "Bug Lifecycle", "Bug Triage", "Root Cause Analysis", "Katalon Studio", "Robot Framework", "SoapUI", "REST Assured", "Docker", "Kubernetes", "AWS", "Azure", "CI/CD", "Maven", "Gradle", "Automation Testing", "Linux","Ubuntu","AI"] }
+- technical_skill also holds development skills: "HTML", "CSS", "React", "Next.js", "Redux", "Vue.js", "Angular", "Tailwind CSS", "Node.js", "Express.js", "NestJS", "PHP", "Laravel", "Django", "Flask", "FastAPI", "Spring Boot", ".NET", "ASP.NET Core", "Go", "Kotlin", "Swift", "Dart", "Flutter", "React Native", "Android Development", "iOS Development", "GraphQL", "Microservices", "Redis", "Firebase", "Elasticsearch", "NoSQL", "GCP", "Terraform", "Nginx", "GitHub Actions", "DevOps", "Data Structures", "Algorithms", "OOP", "Design Patterns", "System Design", "Web Development", "Full Stack Development", "Frontend Development", "Backend Development", "Mobile App Development", "Machine Learning", "Prompt Engineering"
 
 CRITICAL FALLBACK RULES - ALWAYS FIND CANDIDATES:
 1. **Security Testing**: If no exact match, use: "BurpSuite, OWASP, ZAP, Nessus, Wireshark, Penetration Testing, Ethical Hacking"
@@ -39,6 +41,10 @@ CRITICAL FALLBACK RULES - ALWAYS FIND CANDIDATES:
 8. **CI/CD**: If no exact match, use: "Jenkins, Git, GitHub, GitLab, Docker"
 9. **Frontend Testing**: If no exact match, use: "JavaScript, TypeScript, Selenium, Cypress, Playwright"
 10. **Backend Testing**: If no exact match, use: "API Testing, SQL, Java, Python, C#"
+11. **Frontend Development**: If no exact match, use: "React, JavaScript, TypeScript, HTML, CSS, Next.js"
+12. **Backend Development**: If no exact match, use: "Node.js, Java, Python, PHP, C#, SQL, REST API"
+13. **Mobile App Development**: If no exact match, use: "Flutter, React Native, Android Development, Kotlin, Swift, Dart"
+14. **DevOps**: If no exact match, use: "Docker, Kubernetes, CI/CD, AWS, Jenkins, Linux"
 
 IMPORTANT SKILL MAPPING RULES:
 1. When user says "automation expert" or "automation engineer" or "automation tester", map to: "Selenium,Playwright,Cypress,TestNG,Automation Testing"
@@ -52,6 +58,13 @@ IMPORTANT SKILL MAPPING RULES:
 9. When user says "java testing", map to: "TestNG,JUnit" (fallback: "Java,Selenium,API Testing")
 10. When user says "javascript testing", map to: "Jest,Mocha" (fallback: "JavaScript,Cypress,Playwright")
 11. Always include related skills for broad terms (e.g., "Java expert" should include "Selenium,TestNG" if testing context)
+12. When user says "frontend developer" or "front-end", map to: "React,JavaScript,TypeScript,HTML,CSS" (fallback: "Next.js,Vue.js,Angular,Tailwind CSS")
+13. When user says "backend developer" or "back-end", map to: "Node.js,Java,Python,PHP,C#" (fallback: "Express.js,Spring Boot,Django,Laravel,SQL")
+14. When user says "full stack" or "fullstack developer", map to: "React,Node.js,JavaScript" (fallback: "TypeScript,Next.js,MongoDB,SQL")
+15. When user says "mobile developer" or "app developer", map to: "Flutter,React Native,Android Development" (fallback: "Kotlin,Swift,Dart,Java")
+16. When user says "react developer", map to: "React" (fallback: "JavaScript,TypeScript,Next.js,HTML,CSS")
+17. When user says "devops", map to: "DevOps,Docker,Kubernetes,CI/CD" (fallback: "AWS,Jenkins,Terraform,Linux")
+18. When user says only "software engineer" or "developer" or "programmer" with no technology, set "searchTerm" to that word (e.g. "developer"). Do NOT assume a testing skill when the user did not ask for testing.
 
 IMPORTANT VERIFICATION RULES:
 - When user says "verified" or "verified QA" or "verified engineers", set "verified": "Yes"
@@ -115,6 +128,12 @@ User: "Looking for CI/CD experts"
 Response: {"skills": "CI/CD,Jenkins", "fallbackSkills": "Git,GitHub,Docker,Kubernetes"}
 
 REGULAR EXAMPLES:
+User: "Find me a React developer with 3 years experience"
+Response: {"experience": 3, "skills": "React", "fallbackSkills": "JavaScript,TypeScript,Next.js,HTML,CSS"}
+
+User: "Looking for backend developers who know Node.js"
+Response: {"skills": "Node.js", "fallbackSkills": "Express.js,JavaScript,SQL,REST API"}
+
 User: "Find QA with 2 years experience and Playwright expert"
 Response: {"experience": 2, "skills": "Playwright"}
 
@@ -175,8 +194,8 @@ Response: {"lookingForJob": "Yes"}`;
 
     if (!hasAnyQARelatedParams) {
       return res.status(400).json({
-        error: "Please query about searching qa talent",
-        aiMessage: "Please query about searching qa talent"
+        error: "Please query about searching tech talent",
+        aiMessage: "Please query about searching tech talent"
       });
     }
 
@@ -400,7 +419,7 @@ Response: {"lookingForJob": "Yes"}`;
         { company: { [Op.like]: `%${searchParams.company}%` } },
         Sequelize.where(
           Sequelize.literal(
-            `JSON_SEARCH(employment, 'one', '%${searchParams.company}%')`
+            `JSON_SEARCH(employment, 'one', ${Student.sequelize.escape(`%${searchParams.company}%`)})`
           ),
           { [Op.ne]: null }
         )
@@ -421,7 +440,7 @@ Response: {"lookingForJob": "Yes"}`;
           skillConditions.push(
             Sequelize.where(
               Sequelize.literal(
-                `JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`
+                `JSON_SEARCH(skill, 'one', ${Student.sequelize.escape(`%${skill}%`)}, NULL, '$.technical_skill')`
               ),
               { [Op.ne]: null }
             )
@@ -446,7 +465,7 @@ Response: {"lookingForJob": "Yes"}`;
           fallbackSkillConditions.push(
             Sequelize.where(
               Sequelize.literal(
-                `JSON_SEARCH(skill, 'one', '%${skill}%', NULL, '$.technical_skill')`
+                `JSON_SEARCH(skill, 'one', ${Student.sequelize.escape(`%${skill}%`)}, NULL, '$.technical_skill')`
               ),
               { [Op.ne]: null }
             )
@@ -477,6 +496,10 @@ Response: {"lookingForJob": "Yes"}`;
     } else if (orConditions.length > 0) {
       whereClause[Op.or] = orConditions;
     }
+
+    // Same visibility gate as the default listing. Applied last so an AI-extracted
+    // `lookingForJob: "No"` cannot override it.
+    Object.assign(whereClause, qaTalentGate());
 
     // Fetch matching students (respect requestedCount if present)
     // Show all results if user requested "all", otherwise default to 15
@@ -541,6 +564,7 @@ Response: {"lookingForJob": "Yes"}`;
       // No exact skill match — fetch other candidates (most recently updated first)
       // so the recruiter still sees potential profiles instead of an empty result.
       const allStudents = await Student.findAll({
+        where: qaTalentGate(),
         attributes: [
           "StudentId",
           "salutation",
@@ -708,7 +732,6 @@ exports.searchQATalent = async (req, res) => {
     const offset = (pageNumber - 1) * limitNumber;
 
     let whereClause = {};
-    let orConditions = [];
 
     // ✅ Filter by ISTQB Certification
     if (isISTQBCertified) {
@@ -779,83 +802,82 @@ exports.searchQATalent = async (req, res) => {
       }
     }
 
-    // ✅ Filter by Company (search in company field and employment JSON)
+    // Every filter below is AND-ed with the others (each narrows the result set), which is what
+    // live filtering needs. Free text goes through `escape` — it is user input from the query string.
+    const escape = (value) => Student.sequelize.escape(value);
+    const andConditions = (whereClause[Op.and] = whereClause[Op.and] || []);
+
+    // ✅ Company: the legacy `company` column or anywhere in the employment history JSON
     if (company) {
-      orConditions.push(
-        { company: { [Op.like]: `%${company}%` } },
-        Sequelize.where(
-          Sequelize.literal(`JSON_SEARCH(employment, 'one', '%${company}%')`),
-          { [Op.ne]: null }
-        )
-      );
+      andConditions.push({
+        [Op.or]: [
+          { company: { [Op.like]: `%${company}%` } },
+          Sequelize.where(
+            Sequelize.literal(`JSON_SEARCH(employment, 'one', ${escape(`%${company}%`)})`),
+            { [Op.ne]: null }
+          ),
+        ],
+      });
     }
 
-    // ✅ Filter by Skills (search in skill JSON for both soft and technical skills)
-    // Supports both comma-separated string and JSON array format
+    // ✅ Skills: a student must have EVERY selected skill. A skill matches an element of the
+    // technical_skill array exactly (case-insensitive, so "Java" does not match "JavaScript"), a
+    // legacy comma-string technical_skill, or the soft_skill text.
     if (skills) {
-      const skillsArray = skills
+      skills
         .split(",")
         .map((s) => s.trim())
-        .filter((s) => s);
-
-      if (skillsArray.length > 0) {
-        const skillConditions = [];
-
-        skillsArray.forEach((skill) => {
-          // Search in soft_skill (string)
-          skillConditions.push(
-            Sequelize.where(
+        .filter(Boolean)
+        .forEach((skill) => {
+          const tech = "JSON_EXTRACT(skill, '$.technical_skill')";
+          andConditions.push({
+            [Op.or]: [
               Sequelize.literal(
-                `JSON_UNQUOTE(JSON_EXTRACT(skill, '$.soft_skill'))`
+                `(JSON_TYPE(${tech}) = 'ARRAY' AND LOWER(CAST(${tech} AS CHAR)) LIKE ${escape(`%"${skill.toLowerCase()}"%`)})`
               ),
-              { [Op.like]: `%${skill}%` }
-            )
-          );
-
-          // Search in technical_skill (can be string or JSON array)
-          skillConditions.push(
-            Sequelize.where(
               Sequelize.literal(
-                `JSON_UNQUOTE(JSON_EXTRACT(skill, '$.technical_skill'))`
+                `(JSON_TYPE(${tech}) = 'STRING' AND LOWER(JSON_UNQUOTE(${tech})) LIKE ${escape(`%${skill.toLowerCase()}%`)})`
               ),
-              { [Op.like]: `%${skill}%` }
-            )
-          );
-
-          // Search in JSON array elements for technical_skill
-          skillConditions.push(
-            Sequelize.where(
-              Sequelize.literal(
-                `JSON_SEARCH(skill, 'one', '${skill}', NULL, '$.technical_skill[*]')`
+              Sequelize.where(
+                Sequelize.literal("LOWER(JSON_UNQUOTE(JSON_EXTRACT(skill, '$.soft_skill')))"),
+                { [Op.like]: `%${skill.toLowerCase()}%` }
               ),
-              { [Op.ne]: null }
-            )
-          );
+            ],
+          });
         });
-
-        orConditions.push(...skillConditions);
-      }
     }
 
-    // ✅ General Search Term (searches across name, email, profession)
+    // ✅ Search term: every word must match somewhere — name, profession, designation, company,
+    // university, a skill, or a job title/company in the employment history. Email is deliberately
+    // NOT searched: a recruiter could otherwise probe for emails the student keeps private.
     if (searchTerm) {
-      const searchConditions = [
-        { student_name: { [Op.like]: `%${searchTerm}%` } },
-        { email: { [Op.like]: `%${searchTerm}%` } },
-        { profession: { [Op.like]: `%${searchTerm}%` } },
-      ];
-
-      if (orConditions.length > 0) {
-        whereClause[Op.and] = [
-          { [Op.or]: orConditions },
-          { [Op.or]: searchConditions },
-        ];
-      } else {
-        whereClause[Op.or] = searchConditions;
-      }
-    } else if (orConditions.length > 0) {
-      whereClause[Op.or] = orConditions;
+      String(searchTerm)
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 6)
+        .forEach((word) => {
+          const like = { [Op.like]: `%${word}%` };
+          // JSON-derived text compares case-sensitively in MySQL, so those columns are lowered.
+          const likeLower = { [Op.like]: `%${word.toLowerCase()}%` };
+          andConditions.push({
+            [Op.or]: [
+              { student_name: like },
+              { profession: like },
+              { designation: like },
+              { company: like },
+              { university: like },
+              Sequelize.where(Sequelize.literal("LOWER(CAST(JSON_EXTRACT(skill, '$.technical_skill') AS CHAR))"), likeLower),
+              Sequelize.where(Sequelize.literal("LOWER(JSON_UNQUOTE(JSON_EXTRACT(skill, '$.soft_skill')))"), likeLower),
+              Sequelize.where(Sequelize.literal("LOWER(CAST(JSON_EXTRACT(employment, '$.company[*].companyName') AS CHAR))"), likeLower),
+              Sequelize.where(Sequelize.literal("LOWER(CAST(JSON_EXTRACT(employment, '$.company[*].designation') AS CHAR))"), likeLower),
+            ],
+          });
+        });
     }
+
+    // Same visibility gate as the default listing. Applied last so a client-sent
+    // `lookingForJob=No` cannot override it.
+    Object.assign(whereClause, qaTalentGate());
 
     // ✅ Get total count
     const totalStudents = await Student.count({

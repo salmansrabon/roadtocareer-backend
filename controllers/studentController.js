@@ -28,7 +28,7 @@ const { getCurrentOrLastEmployer } = require("../utils/employmentExperienceHelpe
 const { getStarredAssignmentStatus, STARRED_PASS_PERCENT } = require("../utils/starredAssignmentHelper");
 const { planQuizOnMigration } = require("../utils/quizHistoryHelper");
 const { buildSelfLearningPaymentEmail } = require("../utils/selfLearningEmail");
-const MIN_SCORE_THRESHOLD = 70; // Minimum profile score to appear in the default QA talent listing
+const { MIN_SCORE_THRESHOLD } = require("../utils/qaTalentGate");
 
 // ✅ Function to Generate Unique Student ID
 const generateStudentId = async (student_name) => {

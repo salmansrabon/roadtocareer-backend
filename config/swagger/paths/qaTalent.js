@@ -48,14 +48,26 @@ module.exports = {
     get: {
       tags: ["QA Talent Discovery"],
       summary: "Filter talent by skills, experience, certifications, and availability",
+      description:
+        "Same visibility gate as the default listing: only enrolled students with `profile_score >= 70` AND `lookingForJob = Yes` are ever returned, whatever the filters (a `lookingForJob` param cannot override it). All filters are AND-ed, so each one narrows the result.",
       parameters: [
+        {
+          name: "searchTerm",
+          in: "query",
+          schema: { type: "string" },
+          description:
+            "Free text, split into words; every word must match the name, profession, designation, company, university, a skill, or an employment-history job title/company (case-insensitive). Email is not searched.",
+        },
         {
           name: "skills",
           in: "query",
           schema: { type: "string" },
-          description: "Comma separated skills (e.g. Selenium, Cypress, Playwright)",
+          description:
+            "Comma separated skills (e.g. Selenium, Cypress, Playwright). The student must have ALL of them; each is an exact, case-insensitive match (`Java` does not match `JavaScript`).",
         },
-        { name: "experience", in: "query", schema: { type: "number", example: 2 } },
+        { name: "experience", in: "query", schema: { type: "number", example: 2 }, description: "Minimum years" },
+        { name: "maxExperience", in: "query", schema: { type: "number", example: 5 }, description: "Maximum years" },
+        { name: "verified", in: "query", schema: { type: "string", enum: ["Yes", "No"] } },
         { name: "university", in: "query", schema: { type: "string" } },
         { name: "company", in: "query", schema: { type: "string" } },
         { name: "isISTQBCertified", in: "query", schema: { type: "boolean" } },
@@ -63,7 +75,7 @@ module.exports = {
         { name: "limit", in: "query", schema: { type: "integer", default: 20 } },
       ],
       responses: {
-        200: jsonRes("Filtered QA talent list (search is not score-gated)", {
+        200: jsonRes("Filtered talent list (same visibility gate as the default listing)", {
           totalStudents: 8,
           totalPages: 1,
           currentPage: 1,
@@ -90,6 +102,8 @@ module.exports = {
     post: {
       tags: ["QA Talent Discovery"],
       summary: "AI-powered natural language talent search",
+      description:
+        "Understands developer, QA and SDET requests. Results (including the near-match fallback) are limited to the same visibility gate as the default listing: enrolled, `profile_score >= 70`, `lookingForJob = Yes`.",
       requestBody: {
         required: true,
         content: { "application/json": { schema: { $ref: "#/components/schemas/AISearchRequest" } } },
